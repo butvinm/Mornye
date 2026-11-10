@@ -344,7 +344,9 @@ void main() {
         await tester.pumpWidget(
           ProviderScope(
             overrides: [
-      lastfmWaveConfigurationProvider.overrideWith((ref) async => const LastfmWaveConfiguration()),
+              lastfmWaveConfigurationProvider.overrideWith(
+                (ref) async => const LastfmWaveConfiguration(),
+              ),
               settingsProvider.overrideWith(_Settings.new),
               extensionProvider.overrideWith(_Extensions.new),
               exploreProvider.overrideWith(
@@ -459,7 +461,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-      lastfmWaveConfigurationProvider.overrideWith((ref) async => const LastfmWaveConfiguration()),
+          lastfmWaveConfigurationProvider.overrideWith(
+            (ref) async => const LastfmWaveConfiguration(),
+          ),
           settingsProvider.overrideWith(_Settings.new),
           extensionProvider.overrideWith(_Extensions.new),
           exploreProvider.overrideWith(
@@ -526,7 +530,9 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
-      lastfmWaveConfigurationProvider.overrideWith((ref) async => const LastfmWaveConfiguration()),
+            lastfmWaveConfigurationProvider.overrideWith(
+              (ref) async => const LastfmWaveConfiguration(),
+            ),
             settingsProvider.overrideWith(_Settings.new),
             extensionProvider.overrideWith(_Extensions.new),
             exploreProvider.overrideWith(_Explore.new),
@@ -596,7 +602,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-      lastfmWaveConfigurationProvider.overrideWith((ref) async => const LastfmWaveConfiguration()),
+          lastfmWaveConfigurationProvider.overrideWith(
+            (ref) async => const LastfmWaveConfiguration(),
+          ),
           settingsProvider.overrideWith(_Settings.new),
           extensionProvider.overrideWith(_Extensions.new),
           exploreProvider.overrideWith(_Explore.new),
@@ -638,7 +646,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-      lastfmWaveConfigurationProvider.overrideWith((ref) async => const LastfmWaveConfiguration()),
+          lastfmWaveConfigurationProvider.overrideWith(
+            (ref) async => const LastfmWaveConfiguration(),
+          ),
           settingsProvider.overrideWith(_Settings.new),
           extensionProvider.overrideWith(_Extensions.new),
           exploreProvider.overrideWith(_Explore.new),
@@ -701,7 +711,9 @@ void main() {
         await tester.pumpWidget(
           ProviderScope(
             overrides: [
-      lastfmWaveConfigurationProvider.overrideWith((ref) async => const LastfmWaveConfiguration()),
+              lastfmWaveConfigurationProvider.overrideWith(
+                (ref) async => const LastfmWaveConfiguration(),
+              ),
               settingsProvider.overrideWith(_Settings.new),
               extensionProvider.overrideWith(_Extensions.new),
               exploreProvider.overrideWith(_Explore.new),
@@ -782,7 +794,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-      lastfmWaveConfigurationProvider.overrideWith((ref) async => const LastfmWaveConfiguration()),
+          lastfmWaveConfigurationProvider.overrideWith(
+            (ref) async => const LastfmWaveConfiguration(),
+          ),
           settingsProvider.overrideWith(_Settings.new),
           extensionProvider.overrideWith(_Extensions.new),
           exploreProvider.overrideWith(_Explore.new),
@@ -822,7 +836,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-      lastfmWaveConfigurationProvider.overrideWith((ref) async => const LastfmWaveConfiguration()),
+          lastfmWaveConfigurationProvider.overrideWith(
+            (ref) async => const LastfmWaveConfiguration(),
+          ),
           settingsProvider.overrideWith(_Settings.new),
           extensionProvider.overrideWith(_Extensions.new),
           exploreProvider.overrideWith(
@@ -934,7 +950,9 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
-      lastfmWaveConfigurationProvider.overrideWith((ref) async => const LastfmWaveConfiguration()),
+            lastfmWaveConfigurationProvider.overrideWith(
+              (ref) async => const LastfmWaveConfiguration(),
+            ),
             settingsProvider.overrideWith(_Settings.new),
             extensionProvider.overrideWith(
               withSearchExtension ? _Extensions.new : _NoExtensions.new,
@@ -1035,7 +1053,9 @@ Future<void> _pumpStartupHome(
 }) => tester.pumpWidget(
   ProviderScope(
     overrides: [
-      lastfmWaveConfigurationProvider.overrideWith((ref) async => const LastfmWaveConfiguration()),
+      lastfmWaveConfigurationProvider.overrideWith(
+        (ref) async => const LastfmWaveConfiguration(),
+      ),
       settingsProvider.overrideWith(() => _StartupSettings(feedDisabled)),
       extensionProvider.overrideWith(() => extensions),
       exploreProvider.overrideWith(() => explore),

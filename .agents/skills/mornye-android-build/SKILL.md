@@ -19,43 +19,53 @@ export MORNYE_RUST_ANDROID_ABIS=arm64-v8a
 
 Confirm FVM uses the version in `.fvmrc`. Do not replace it with an arbitrary system Flutter installation.
 
-## 2. Stabilize generated Android files
+## 2. Check and commit the intended scope
 
-If Flutter tests have run since the previous build, regenerate normal app configuration before building:
+Use `python3 scripts/check_local_changes.py --list AREA` to inspect focused checks
+for `lastfm`, `playback`, `logging`, or `build`; run the relevant areas and review
+the diff. Native changes additionally require the relevant Cargo tests and
+`scripts/check_rust_backend.sh`. Historical baseline failures in `PROCESS.md` are
+not automatic exemptions. Preserve unrelated work and never stage secrets or
+artifacts. Commit the intended source, tests, and build changes before delivery.
+Do not fabricate retrospective commits for previous APKs. Explicit user
+instructions take precedence.
+
+## 3. Deliver a local debug APK from that commit
+
+For the personal side-by-side installation, use the guarded command below. Select
+check areas relevant to the change (multiple `--check-area` flags are supported):
 
 ```bash
+python3 scripts/deliver_android_debug.py --check-area build --check-area logging
+```
+
+It rejects dirty source, locks concurrent deliveries, checks pinned FVM, runs and
+records selected checks, then performs config-only **after** those tests. It builds
+current Rust inputs and ARM64 Lite debug APK, checks package `com.zarz.mornye.debug`,
+established local debug certificate, source marker, native payload and compact ZIP
+packaging. It preserves previous Downloads artifacts and writes a JSON manifest
+with source commit/tree, actual command results, APK hash/size, certificate and
+payload evidence. It does not claim real-device validation or a green full suite.
+Do not run other tests/build commands concurrently outside this wrapper's lock.
+
+## 4. Official/local release builds remain separate
+
+The existing release script retains its original supported variants:
+
+```bash
+# After all tests, with the environment above:
 fvm flutter build apk --config-only
-```
-
-Do not substitute `fvm flutter pub get`; it does not reliably remove test-only plugin registrations.
-
-## 3. Run relevant checks
-
-Run focused tests for changed behavior and the appropriate final checks:
-
-```bash
-fvm dart format --output=none --set-exit-if-changed lib test integration_test
-fvm flutter analyze
-fvm flutter test test/backup_restore_picker_test.dart
-bash scripts/check_rust_backend.sh
-```
-
-Replace the example focused test with those covering the actual change. Use the full `fvm flutter test` for broad final verification. Do not treat unrelated baseline failures as caused by the current change, and do not hide them.
-
-## 4. Commit the delivery scope, build and verify
-
-For every APK version delivered to the user, verify the intended scope and relevant checks, commit its source, tests, and build changes, and build that exact committed state. Do not deliver from a dirty build state by default. Never sweep unrelated user changes, secrets, or generated artifacts into the commit; isolate the intended scope first. Explicit user instructions take precedence. Do not fabricate retrospective commits for earlier APKs. Report the source commit, APK SHA-256, and build marker with each delivery.
-
-```bash
 bash scripts/build_android.sh --lite
 shasum -a 256 build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
 "$ANDROID_HOME/build-tools/37.0.0/apksigner" verify --verbose --print-certs \
   build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
 ```
 
-The build script must complete its Rust APK payload audit. Signature verification must report APK Signature Scheme v2 as true.
-
-Report the absolute APK path, size, SHA-256, and whether real-device behavior was tested. Local debug signing is suitable for updating earlier local fork builds with the same key, not for replacing an official installation.
+Do not use the debug delivery wrapper for an official release. Before delivering
+any APK, build the exact committed source by default and report source commit,
+build marker, APK path, SHA-256, size, variant and validated checks. The release
+script's payload audit must pass; verify APK Signature Scheme v2. Debug signing
+updates only a matching local certificate, never bypasses an official signature.
 
 ## Avoid incremental debug APK size inflation
 

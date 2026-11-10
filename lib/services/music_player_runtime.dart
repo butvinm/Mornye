@@ -18,6 +18,7 @@ import 'package:mornye/services/cover_store.dart';
 import 'package:mornye/services/discord_presence_service.dart';
 import 'package:mornye/services/history_database.dart';
 import 'package:mornye/services/download_file_recovery.dart';
+import 'package:mornye/services/download_playback.dart';
 import 'package:mornye/services/library_collections_database.dart';
 import 'package:mornye/services/library_database.dart';
 import 'package:mornye/services/listening_statistics.dart';
@@ -60,6 +61,8 @@ class PlaybackDependencies {
     this.readMetadata = PlatformBridge.readFileMetadata,
     this.readNetworkMetadata = _readNetworkMetadata,
     this.resolveNetworkSource = _resolveNetworkSource,
+    this.resolveDownloadSource = _resolveDownloadSource,
+    this.prepareDownloadWindow = _prepareDownloadWindow,
     this.networkSourceReachable = _networkSourceReachable,
     this.recoverMissingFile = _recoverMissingFile,
     this.recoverMovedDownload = _recoverMovedDownload,
@@ -104,6 +107,8 @@ class PlaybackDependencies {
   readMetadata;
   final Future<Map<String, dynamic>> Function(String) readNetworkMetadata;
   final Future<String> Function(String) resolveNetworkSource;
+  final Future<String> Function(String) resolveDownloadSource;
+  final Future<void> Function(List<String>, int) prepareDownloadWindow;
 
   /// Whether a `network://` Library song can play now, as autoplay asks
   /// before queueing it.
@@ -191,6 +196,10 @@ class PlaybackDependencies {
       NetworkMetadataService.instance.read(source);
   static Future<String> _resolveNetworkSource(String source) =>
       NetworkStorageService.instance.resolve(source);
+  static Future<void> _prepareDownloadWindow(List<String> sources, int index) =>
+      DownloadPlaybackService.instance.prepareWindow(sources, index);
+  static Future<String> _resolveDownloadSource(String source) =>
+      DownloadPlaybackService.instance.resolve(source);
   static Future<bool> _networkSourceReachable(String source) =>
       NetworkStorageService.instance.reachable(source);
   static Future<String?> _recoverMissingFile(String path) async {

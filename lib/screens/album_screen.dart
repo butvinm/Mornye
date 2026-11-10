@@ -1,3 +1,4 @@
+import 'package:mornye/services/playback_diagnostics.dart';
 import 'package:flutter/material.dart';
 import 'package:mornye/theme/app_tokens.dart';
 import 'package:mornye/theme/mornye_theme.dart';
@@ -10,6 +11,7 @@ import 'package:mornye/l10n/l10n.dart';
 import 'package:mornye/models/track.dart';
 import 'package:mornye/providers/download_queue_provider.dart';
 import 'package:mornye/providers/extension_provider.dart';
+import 'package:mornye/providers/playback_provider.dart';
 import 'package:mornye/providers/recent_access_provider.dart';
 import 'package:mornye/services/platform_bridge.dart';
 import 'package:mornye/utils/image_cache_utils.dart';
@@ -241,6 +243,10 @@ class _AlbumScreenState extends ConsumerState<AlbumScreen>
         .map(
           (t) => _parseTrack(
             t as Map<String, dynamic>,
+            source:
+                _directMetadataProviderId() ??
+                fallbackSource?['extension_id']?.toString() ??
+                fallbackSource?['provider_id']?.toString(),
             albumTypeFallback: albumType,
             totalTracksFallback: totalTracks,
           ).copyWith(headerVideoUrl: normalizeRemoteHttpUrl(headerVideo)),
@@ -382,25 +388,14 @@ class _AlbumScreenState extends ConsumerState<AlbumScreen>
 
   Track _parseTrack(
     Map<String, dynamic> data, {
+    String? source,
     String? albumTypeFallback,
     int? totalTracksFallback,
   }) {
-    return Track(
-      id: data['spotify_id'] as String? ?? '',
-      name: data['name'] as String? ?? '',
-      artistName: data['artists'] as String? ?? '',
-      albumName: data['album_name'] as String? ?? '',
-      albumArtist: data['album_artist'] as String?,
+    final track = Track.fromBackendMap(data, source: source).copyWith(
       artistId:
           (data['artist_id'] ?? data['artistId'])?.toString() ?? _artistId,
       albumId: data['album_id']?.toString() ?? widget.albumId,
-      coverUrl: normalizeCoverReference(data['images']?.toString()),
-      isrc: data['isrc'] as String?,
-      duration: ((data['duration_ms'] as int? ?? 0) / 1000).round(),
-      trackNumber: data['track_number'] as int?,
-      discNumber: data['disc_number'] as int?,
-      totalDiscs: data['total_discs'] as int?,
-      releaseDate: data['release_date'] as String?,
       albumType:
           normalizeOptionalString(data['album_type']?.toString()) ??
           albumTypeFallback ??
@@ -409,19 +404,9 @@ class _AlbumScreenState extends ConsumerState<AlbumScreen>
           data['total_tracks'] as int? ??
           totalTracksFallback ??
           _albumTotalTracks,
-      composer: data['composer']?.toString(),
-      genre: data['genre']?.toString(),
-      label: data['label']?.toString(),
-      copyright: data['copyright']?.toString(),
-      comment: data['comment']?.toString(),
-      upc: normalizeOptionalString(
-        (data['upc'] ?? data['barcode'])?.toString(),
-      ),
-      audioQuality: data['audio_quality']?.toString(),
-      audioModes: data['audio_modes']?.toString(),
-      previewUrl: data['preview_url']?.toString(),
-      explicit: parseExplicitFlag(data['explicit']),
     );
+    PlaybackDiagnostics.track('metadata', track, origin: 'album');
+    return track;
   }
 
   String? _recommendedDownloadService() {
@@ -643,6 +628,7 @@ class _AlbumScreenState extends ConsumerState<AlbumScreen>
           : CollectionHeaderActions(
               tracks: tracks,
               onLoveAll: () => loveAllTracks(this.context, ref, tracks),
+              onPlay: () => _playAll(0),
               downloadIcon: Icons.download,
               onDownloadAll: () => _downloadAll(context),
               addToPlaylistIcon: Icons.add,
@@ -718,6 +704,7 @@ class _AlbumScreenState extends ConsumerState<AlbumScreen>
           tracks[index],
           forceQualityPicker: forceQualityPicker,
         ),
+        onPlay: () => _playAll(index),
       );
       _desktopActivations
         ..clear()
@@ -759,6 +746,7 @@ class _AlbumScreenState extends ConsumerState<AlbumScreen>
                       track,
                       forceQualityPicker: forceQualityPicker,
                     ),
+                onPlay: () => _playAll(index),
                 clickableArtist: true,
                 showQualityBadges: context.isMornye
                     ? !_audioTraits.any(
@@ -872,6 +860,21 @@ class _AlbumScreenState extends ConsumerState<AlbumScreen>
       forceQualityPicker: true,
       onQueued: exitSelectionMode,
     );
+  }
+
+  Future<void> _playAll(int startIndex) async {
+    final tracks = _tracks;
+    if (tracks == null || tracks.isEmpty) return;
+    try {
+      await ref
+          .read(playbackProvider.notifier)
+          .playTrackList(tracks, startIndex: startIndex, origin: 'album');
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.l10n.snackbarCannotOpenFile('$error'))),
+      );
+    }
   }
 
   void _downloadTrack(

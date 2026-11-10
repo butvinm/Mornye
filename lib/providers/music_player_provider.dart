@@ -8,6 +8,7 @@ import 'package:mornye/models/track.dart';
 import 'package:mornye/models/unified_library_item.dart';
 import 'package:mornye/providers/download_queue_provider.dart';
 import 'package:mornye/providers/settings_provider.dart';
+import 'package:mornye/services/download_playback.dart';
 import 'package:mornye/services/history_database.dart';
 import 'package:mornye/services/history_row_mapper.dart';
 import 'package:mornye/services/library_database.dart';
@@ -34,11 +35,11 @@ final playerUiEnabledProvider = Provider<bool>((ref) {
     return true;
   }
   return ref.watch(
-    localMediaItemProvider.select(
-      (state) =>
-          state.value?.extras?['source']?.toString().startsWith('network://') ??
-          false,
-    ),
+    localMediaItemProvider.select((state) {
+      final source = state.value?.extras?['source']?.toString() ?? '';
+      return source.startsWith('network://') ||
+          isDownloadPlaybackSource(source);
+    }),
   );
 });
 

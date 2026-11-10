@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:mornye/widgets/app_snack_bar.dart';
+import 'package:mornye/widgets/lastfm_wave_card.dart';
 import 'package:mornye/widgets/tv_navigation.dart';
 import 'package:mornye/theme/app_tokens.dart';
 import 'package:mornye/theme/cover_palette.dart';
@@ -995,6 +996,18 @@ class _HomeTabState extends ConsumerState<HomeTab>
                   !_searchingLibrary &&
                   !homeFeedDisabled)
                 _buildBrowseSliver(),
+              if (_showsHome && !hasSearchInput && !hasResults)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      16 + homeContentInset(context),
+                      12,
+                      16 + homeContentInset(context),
+                      12,
+                    ),
+                    child: const LastfmWaveCard(),
+                  ),
+                ),
               _buildHomeSectionsSliver(
                 sectionMotion: sectionMotion,
                 hasResults: hasResults,

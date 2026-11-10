@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart' show compute, visibleForTesting;
 import 'package:flutter/widgets.dart'
     show AppLifecycleState, WidgetsBinding, WidgetsBindingObserver;
 import 'package:mornye/services/playback_notification.dart';
+import 'package:mornye/services/playback_diagnostics.dart';
 import 'package:audio_session/audio_session.dart'
     show
         AudioDevice,
@@ -41,6 +42,7 @@ import 'package:mornye/utils/desktop_platform.dart';
 import 'package:mornye/utils/int_utils.dart';
 import 'package:mornye/utils/playback_artwork.dart';
 import 'package:mornye/services/downloaded_embedded_cover_resolver.dart';
+import 'package:mornye/services/download_playback.dart';
 import 'package:mornye/utils/logger.dart';
 import 'package:mornye/services/playable_media.dart';
 
@@ -558,6 +560,13 @@ class MusicPlayerHandler extends BaseAudioHandler
       return;
     }
     if (_reloadAfterServerDied(error)) return;
+    PlaybackDiagnostics.event(
+      'player_error',
+      fields: {
+        'trackId': mediaItem.value?.id,
+        'errorType': error.runtimeType.toString(),
+      },
+    );
     _sourceReady = false;
     _playbackError = error;
     _userPaused = true;
@@ -1125,6 +1134,14 @@ class MusicPlayerHandler extends BaseAudioHandler
   }
 
   Future<String?> _resolveSource(PlayableMedia media) async {
+    if (isDownloadPlaybackSource(media.source)) {
+      final source = await _dependencies.resolveDownloadSource(media.source);
+      // Transition/preload callers also need SAF handling when a download
+      // finishes before its queued identity has been relocated.
+      return source.startsWith('content://')
+          ? _sourceCache.resolve(source)
+          : source;
+    }
     if (media.source.startsWith('network://')) {
       try {
         return await _dependencies.resolveNetworkSource(media.source);
@@ -1485,6 +1502,7 @@ class MusicPlayerHandler extends BaseAudioHandler
 
     queue.add(List<MediaItem>.unmodifiable(_queueItems));
     _broadcastState();
+    unawaited(_prepareDownloadWindow());
     unawaited(_persistSession(position: playbackState.value.position));
   }
 
@@ -1615,6 +1633,11 @@ class MusicPlayerHandler extends BaseAudioHandler
     if (!_isCurrentPlayRequest(generation, media)) await _player.pause();
   }
 
+  Future<void> _prepareDownloadWindow() => _dependencies.prepareDownloadWindow(
+    _media.map((item) => item.source).toList(),
+    _index,
+  );
+
   Future<void> _loadIndex(
     int generation,
     PlayableMedia media, {
@@ -1642,6 +1665,52 @@ class MusicPlayerHandler extends BaseAudioHandler
     _broadcastState(playerState: PlaybackDeckState.playing, loading: true);
     await _claimHardwareMediaButtons();
     if (!_isCurrentPlayRequest(generation, media)) return;
+    try {
+      await _prepareDownloadWindow();
+    } catch (error, stackTrace) {
+      if (_isCurrentPlayRequest(generation, media)) {
+        _reportPlaybackError(_player, error, stackTrace);
+      }
+      return;
+    }
+    if (!_isCurrentPlayRequest(generation, media)) return;
+    PlaybackDiagnostics.event(
+      'player_resolve',
+      fields: {
+        'trackId': media.id,
+        'reference': isDownloadPlaybackSource(media.source)
+            ? media.source
+            : null,
+        'sourceKind': isDownloadPlaybackSource(media.source)
+            ? 'download'
+            : media.isContentUri
+            ? 'saf'
+            : media.isNetwork
+            ? 'network'
+            : 'file',
+      },
+    );
+    // A download identity may finish as a SAF URI. Resolve it before deciding
+    // how to open Android storage, and retain only durable sources in the queue.
+    String? downloadStream;
+    if (isDownloadPlaybackSource(media.source)) {
+      try {
+        final source = await _dependencies.resolveDownloadSource(media.source);
+        if (!_isCurrentPlayRequest(generation, media)) return;
+        if (source.startsWith('http://') || source.startsWith('https://')) {
+          downloadStream = source;
+        } else {
+          _relocateQueuedSource(media.source, source);
+          media = _media[_index];
+          mediaItem.add(_toMediaItem(media));
+        }
+      } catch (error, stackTrace) {
+        if (_isCurrentPlayRequest(generation, media)) {
+          _reportPlaybackError(_player, error, stackTrace);
+        }
+        return;
+      }
+    }
     if (_dependencies.isAndroid && !media.isNetwork) {
       try {
         final recovered = await _dependencies.recoverMovedDownload(
@@ -1680,7 +1749,16 @@ class MusicPlayerHandler extends BaseAudioHandler
         _log.w('Failed to open direct SAF playback lease: $e');
       }
     }
-    var resolved = playbackLease?.path ?? await _resolveSource(media);
+    String? resolved;
+    try {
+      resolved =
+          playbackLease?.path ?? downloadStream ?? await _resolveSource(media);
+    } catch (error, stackTrace) {
+      if (_isCurrentPlayRequest(generation, media)) {
+        _reportPlaybackError(_player, error, stackTrace);
+      }
+      return;
+    }
     var usingLocalSafCopy = media.isContentUri && playbackLease == null;
     if (!_isCurrentPlayRequest(generation, media)) {
       if (playbackLease != null) {
@@ -1742,6 +1820,12 @@ class MusicPlayerHandler extends BaseAudioHandler
           : null;
       try {
         await _startResolvedSource(resolved, generation, media, startAt);
+        if (_isCurrentPlayRequest(generation, media)) {
+          PlaybackDiagnostics.event(
+            'player_started',
+            fields: {'trackId': media.id},
+          );
+        }
         if (playbackLease != null) {
           await PlatformBridge.closeContentUriPlaybackLease(
             playbackLease.token,

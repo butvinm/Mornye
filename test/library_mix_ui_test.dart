@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:mornye/providers/lastfm_wave_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mornye/l10n/app_localizations.dart';
@@ -72,6 +73,11 @@ void main() {
         );
         // Rows take taps again once the scroll comes to rest.
         await tester.pump(const Duration(seconds: 1));
+        // Home sections animate into place below the wave card. Align the tap
+        // after that layout settles, not at its intermediate scroll position.
+        await tester.ensureVisible(title);
+        await tester.pump();
+        expect(title.hitTestable(), findsOneWidget);
         expect(find.text('Mixes for you'), findsOneWidget);
         expect(find.text('Tyler, The Creator and Frank Ocean'), findsOneWidget);
         expect(find.byType(LibraryMixCover), findsOneWidget);
@@ -337,6 +343,7 @@ Future<void> _pumpHome(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        lastfmWaveConfigurationProvider.overrideWith((ref) async => const LastfmWaveConfiguration()),
         settingsProvider.overrideWith(
           () => FixedSettingsNotifier(
             const AppSettings(

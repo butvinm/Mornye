@@ -574,6 +574,8 @@ MusicPlayerRuntime _runtime({
   Future<String?> Function(String)? recoverMissingFile,
   Future<String?> Function(String, String, AppSettings)? recoverMovedDownload,
   Future<String> Function(String)? resolveNetworkSource,
+  Future<String> Function(String)? resolveDownloadSource,
+  Future<void> Function(List<String>, int)? prepareDownloadWindow,
   Future<Map<String, dynamic>> Function(String)? readNetworkMetadata,
   CoverStore? coverStore,
 }) {
@@ -610,6 +612,10 @@ MusicPlayerRuntime _runtime({
           (_, {displayName}) async => {'replaygain_track_gain': '-6 dB'},
       recoverMissingFile: recoverMissingFile ?? (_) async => null,
       recoverMovedDownload: recoverMovedDownload ?? (_, _, _) async => null,
+      prepareDownloadWindow: prepareDownloadWindow ?? (_, _) async {},
+      resolveDownloadSource:
+          resolveDownloadSource ??
+          (_) async => throw StateError('No download resolver'),
       resolveNetworkSource:
           resolveNetworkSource ?? NetworkStorageService.instance.resolve,
       readNetworkMetadata:
@@ -1523,6 +1529,104 @@ void main() {
       expect(decks.single.state, PlaybackDeckState.playing);
       expect(handler.playbackState.value.playing, isTrue);
       expect(handler.mediaItem.value?.id, _track.id);
+    },
+  );
+
+  test(
+    'download window follows selected player queue on next and skip',
+    () async {
+      final windows = <int>[];
+      final handler = await _runtime(
+        prepareDownloadWindow: (sources, index) async {
+          windows.add(index);
+          expect(sources.length, 4);
+        },
+        resolveDownloadSource: (_) async => '/music/download.flac',
+      ).initialize();
+      await handler.setQueueAndPlay([
+        for (var i = 0; i < 4; i++)
+          PlayableMedia(
+            id: 'track-$i',
+            source: 'mornye-download:lazy-$i',
+            title: 'Song',
+            artist: 'Artist',
+          ),
+      ]);
+      expect(windows, [0]);
+      await handler.skipToQueueItem(2);
+      expect(windows.last, 2);
+      await handler.skipToNext();
+      expect(windows.last, 3);
+    },
+  );
+
+  test(
+    'failed download resolution clears loading without escaping play',
+    () async {
+      final decks = <_Deck>[];
+      final handler = await _runtime(
+        decks: decks,
+        resolveDownloadSource: (_) async =>
+            throw StateError('The download was cancelled'),
+      ).initialize();
+      await handler.setQueueAndPlay([
+        const PlayableMedia(
+          id: 'download',
+          source: 'mornye-download:item',
+          title: 'Download',
+          artist: '',
+        ),
+      ]);
+      expect(
+        handler.playbackState.value.processingState,
+        AudioProcessingState.error,
+      );
+      expect(handler.playbackState.value.playing, isFalse);
+      expect(decks.single.sources, isEmpty);
+      await handler.setQueueAndPlay([_track]);
+      expect(handler.playbackState.value.playing, isTrue);
+    },
+  );
+
+  test(
+    'completed download SAF source uses normal content URI playback',
+    () async {
+      final directory = await Directory.systemTemp.createTemp('download-saf-');
+      addTearDown(() => directory.delete(recursive: true));
+      final cached = await File(
+        '${directory.path}/copy.flac',
+      ).writeAsString('audio');
+      const content = 'content://test.provider/document/completed.flac';
+      const channel = MethodChannel('com.zarz.mornye/backend');
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      final copied = <String>[];
+      messenger.setMockMethodCallHandler(channel, (call) async {
+        if (call.method == 'safCopyToTemp') {
+          copied.add(content);
+          return cached.path;
+        }
+        return null;
+      });
+      addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
+      final decks = <_Deck>[];
+      final handler = await _runtime(
+        decks: decks,
+        isAndroid: true,
+        resolveDownloadSource: (_) async => content,
+      ).initialize();
+      await handler.setQueueAndPlay([
+        const PlayableMedia(
+          id: 'download',
+          source: 'mornye-download:item',
+          title: 'Download',
+          artist: '',
+        ),
+      ]);
+      expect(copied, [content]);
+      expect(decks.single.sources, [cached.path]);
+      expect(handler.mediaItem.value?.extras?['source'], content);
+      expect(handler.playbackState.value.playing, isTrue);
     },
   );
 

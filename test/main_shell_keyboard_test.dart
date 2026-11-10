@@ -1,5 +1,6 @@
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
+import 'package:mornye/providers/lastfm_wave_provider.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -64,6 +65,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          lastfmWaveConfigurationProvider.overrideWith((ref) async => const LastfmWaveConfiguration()),
           settingsProvider.overrideWith(
             () => _Settings(externalPlayer: externalPlayer),
           ),

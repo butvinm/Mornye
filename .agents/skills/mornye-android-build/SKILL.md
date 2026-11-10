@@ -1,6 +1,6 @@
 ---
 name: mornye-android-build
-description: Build and verify Mornye Android APKs on this MacBook using the pinned Flutter, Rust, Java, SDK, and NDK toolchain. Use when asked to build, rebuild, package, or verify an Android artifact for this repository.
+description: Build and verify Mornye Android APKs using the pinned Flutter and native toolchain. Use when asked to build, rebuild, package, or verify an Android artifact for this repository.
 ---
 
 # Build Mornye for Android
@@ -8,6 +8,10 @@ description: Build and verify Mornye Android APKs on this MacBook using the pinn
 Work from the repository root and read `AGENTS.md` first. Preserve uncommitted changes and never run Flutter tests concurrently with the build.
 
 ## 1. Configure the toolchain
+
+The following defaults match the supported local macOS environment. On another
+machine, install the pinned tools and set the corresponding paths explicitly.
+The local delivery wrapper requires the established debug certificate for updates.
 
 ```bash
 export JAVA_HOME="$HOME/.local/share/mise/installs/java/temurin-25.0.5+8.0.LTS/Contents/Home"
@@ -24,11 +28,45 @@ Confirm FVM uses the version in `.fvmrc`. Do not replace it with an arbitrary sy
 Use `python3 scripts/check_local_changes.py --list AREA` to inspect focused checks
 for `lastfm`, `playback`, `logging`, or `build`; run the relevant areas and review
 the diff. Native changes additionally require the relevant Cargo tests and
-`scripts/check_rust_backend.sh`. Historical baseline failures in `PROCESS.md` are
-not automatic exemptions. Preserve unrelated work and never stage secrets or
+`scripts/check_rust_backend.sh`. Historical failures listed below are not automatic
+exemptions. Preserve unrelated work and never stage secrets or
 artifacts. Commit the intended source, tests, and build changes before delivery.
 Do not fabricate retrospective commits for previous APKs. Explicit user
 instructions take precedence.
+
+### Select meaningful checks
+
+`python3 scripts/check_local_changes.py --list AREA` prints the commands;
+`--run AREA` runs them sequentially and stops at the first failure. Default is
+listing only. Select areas from the actual diff, not every area for every change.
+
+| Area | Coverage |
+| --- | --- |
+| `lastfm` | Response/cache/settings, exact identity, selected row, Home integration |
+| `playback` | Current/next scheduling, completed-path handoff, runtime and source metadata |
+| `logging` | Bounded diagnostics, redaction, UTF-8 file attachments |
+| `build` | Python delivery and APK safeguards; does not build Android |
+
+Add checks for other touched code. Large cross-cutting changes warrant the full
+Flutter suite; repeated full-suite runs are unnecessary after a small change's
+meaningful checks pass. Keep public provider fixtures with provenance rather than
+replacing real response-shape evidence with only mocks. A missing exact match does
+not prove catalog absence; test retrieval, identity, download and playback separately.
+Completed downloads can disappear from queue state immediately, so regression
+coverage must include the final local/SAF handoff rather than only queue presence.
+
+### Historical baseline evidence
+
+During November 2026, broad checks reported three missing `referenceColumns`
+arguments in `integration_test/native_cache_maintenance_test.dart` (then lines
+155, 216, 302), and a SQLite migration fixture lacking
+`audio_metadata_scan_version` / `format` columns. An early Link failure passed
+on isolated rerun and was not established as a permanent baseline failure.
+
+These observations are not current assertions or skip rules. On recurrence,
+record command, source commit, test name and error, then compare with an isolated
+baseline if necessary. Never turn this list into permanent blanket ignores or
+report the whole suite green when it was not.
 
 ## 3. Deliver a local debug APK from that commit
 
@@ -47,7 +85,9 @@ current Rust inputs and ARM64 Lite debug APK, checks package `com.zarz.mornye.de
 established local debug certificate, source marker, native payload and compact ZIP
 packaging. It preserves previous Downloads artifacts and writes a JSON manifest
 with source commit/tree, actual command results, APK hash/size, certificate and
-payload evidence. It does not claim real-device validation or a green full suite.
+payload evidence. Keep APK and manifest together. Report only checks actually run,
+including failures/skips and device-only gaps; a prior pass is not evidence for
+later edits. The manifest does not prove device behavior or a green full suite.
 Do not run other tests/build commands concurrently outside this wrapper's lock.
 
 ## 4. Official/local release builds remain separate

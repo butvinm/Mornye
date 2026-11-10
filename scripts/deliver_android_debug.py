@@ -135,7 +135,8 @@ def main():
     if not flutter.is_file():
         raise RuntimeError('Install the pinned SDK with FVM before delivery.')
     pinned = json.loads((ROOT / '.fvmrc').read_text())['flutter']
-    actual = json.loads(subprocess.check_output([str(flutter), '--version', '--machine'], env=env))['frameworkVersion']
+    sdk_version = json.loads(subprocess.check_output([str(flutter), '--version', '--machine'], env=env))
+    actual = sdk_version['frameworkVersion']
     if actual != pinned:
         raise RuntimeError(f'Expected pinned Flutter {pinned}; found {actual}.')
     build_tools = Path(env['ANDROID_HOME']) / 'build-tools/37.0.0'
@@ -159,6 +160,14 @@ def main():
             raise RuntimeError(f'{label} failed with exit {result.returncode}; inspect {logfile}. No delivery manifest produced.')
         return logfile.read_text()
 
+    run('prepare-sdk', [str(flutter.with_name('dart')), 'scripts/prepare_flutter_sdk.dart'])
+    patch_file = ROOT / 'patches/flutter' / f'{pinned}-semantics-geometry.patch'
+    patched_sdk_file = flutter.parent.parent / 'packages/flutter/lib/src/rendering/object.dart'
+    sdk_evidence = {'framework_revision': sdk_version.get('frameworkRevision'),
+                    'patch_sha256': sha(patch_file),
+                    'patched_rendering_object_sha256': sha(patched_sdk_file)}
+    run('dependencies', [str(flutter), 'pub', 'get', '--enforce-lockfile'])
+    clean_source(ROOT, commit)
     for area in dict.fromkeys(args.check_area):
         run('check-' + area, [sys.executable, 'scripts/check_local_changes.py', '--run', area])
     clean_source(ROOT, commit)
@@ -195,11 +204,15 @@ def main():
     if not version:
         raise RuntimeError('Cannot read APK version metadata.')
     clean_source(ROOT, commit)
+    if sha(patched_sdk_file) != sdk_evidence['patched_rendering_object_sha256']:
+        raise RuntimeError('Patched Flutter SDK changed during delivery.')
     manifest = {'schema': 1, 'source_commit': commit, 'source_tree': git(ROOT, 'rev-parse', 'HEAD^{tree}'),
                 'built_utc': dt.datetime.now(dt.timezone.utc).isoformat(), 'build_marker': marker,
                 'variant': 'debug', 'lite': True, 'package': PACKAGE, 'abis': [ABI],
                 'version_code': version.group(1), 'version_name': version.group(2),
-                'flutter': actual, 'certificate_sha256': cert.group(1),
+                'flutter': actual, 'flutter_sdk_evidence': sdk_evidence,
+                'android_build_tools': '37.0.0', 'android_ndk': '30.0.16248370',
+                'certificate_sha256': cert.group(1),
                 'apk': apk_out.name, 'apk_sha256': sha(apk), 'apk_bytes': apk.stat().st_size,
                 'audit': audit, 'checks_and_builds': records,
                 'device_validation': 'not performed by this delivery command',

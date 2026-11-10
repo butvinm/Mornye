@@ -24,6 +24,12 @@ class DeliverySafetyTest(unittest.TestCase):
                 flutter.parent.mkdir(parents=True)
                 flutter.touch()
                 (root / '.fvmrc').write_text(json.dumps({'flutter': 'pinned'}))
+                patch_file = root / 'patches/flutter/pinned-semantics-geometry.patch'
+                patch_file.parent.mkdir(parents=True)
+                patch_file.write_text('patch')
+                sdk_file = flutter.parent.parent / 'packages/flutter/lib/src/rendering/object.dart'
+                sdk_file.parent.mkdir(parents=True)
+                sdk_file.write_text('patched source')
                 sdk = root / 'sdk'
                 for name in ('apksigner', 'aapt'):
                     tool = sdk / 'build-tools/37.0.0' / name
@@ -44,13 +50,15 @@ class DeliverySafetyTest(unittest.TestCase):
                     with self.assertRaisesRegex(RuntimeError, 'failed with exit 7'):
                         delivery.main()
                 self.assertEqual([], list(out.iterdir()))
-                self.assertIn('--run', commands[0])
+                self.assertIn('scripts/prepare_flutter_sdk.dart', commands[0])
+                self.assertEqual(['pub', 'get', '--enforce-lockfile'], commands[1][-3:])
+                self.assertIn('--run', commands[2])
                 if failure == 'check':
-                    self.assertEqual(1, len(commands))
+                    self.assertEqual(3, len(commands))
                 else:
-                    self.assertIn('--config-only', commands[1])
-                    self.assertEqual(['bash', 'scripts/build_rust_backend.sh', 'android'], commands[2])
-                    self.assertIn('--debug', commands[3])
+                    self.assertIn('--config-only', commands[3])
+                    self.assertEqual(['bash', 'scripts/build_rust_backend.sh', 'android'], commands[4])
+                    self.assertIn('--debug', commands[5])
 
     def test_delivery_lock_excludes_second_builder(self):
         first = delivery.acquire_lock(self.root)

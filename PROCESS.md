@@ -107,3 +107,8 @@ with their retrieval provenance and limitations documented.
   completion handoff and test final local/SAF paths independently of queue rows.
 - Repeated emergency APKs without commits made attribution difficult. Future
   versions should be traceable from source commit through artifact to device log.
+
+The delivery wrapper prepares the pinned Flutter SDK patch and restores packages
+with `pub get --enforce-lockfile` before focused checks. Its manifest records the
+patch and patched SDK file hashes, so an already-prepared local SDK is not an
+undocumented prerequisite. FVM and the native toolchain still require installation.

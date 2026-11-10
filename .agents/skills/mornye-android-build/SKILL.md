@@ -39,8 +39,10 @@ check areas relevant to the change (multiple `--check-area` flags are supported)
 python3 scripts/deliver_android_debug.py --check-area build --check-area logging
 ```
 
-It rejects dirty source, locks concurrent deliveries, checks pinned FVM, runs and
-records selected checks, then performs config-only **after** those tests. It builds
+It rejects dirty source, locks concurrent deliveries, checks pinned FVM, applies
+and verifies the repository SDK patch, restores dependencies with an enforced
+lockfile, runs and records selected checks, then performs config-only **after**
+those tests. The manifest fingerprints the patch and patched SDK source file. It builds
 current Rust inputs and ARM64 Lite debug APK, checks package `com.zarz.mornye.debug`,
 established local debug certificate, source marker, native payload and compact ZIP
 packaging. It preserves previous Downloads artifacts and writes a JSON manifest

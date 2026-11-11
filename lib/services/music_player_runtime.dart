@@ -63,6 +63,8 @@ class PlaybackDependencies {
     this.resolveNetworkSource = _resolveNetworkSource,
     this.resolveDownloadSource = _resolveDownloadSource,
     this.prepareDownloadWindow = _prepareDownloadWindow,
+    this.suspendDownloadWindow = _suspendDownloadWindow,
+    this.releaseDownloadSources = _releaseDownloadSources,
     this.networkSourceReachable = _networkSourceReachable,
     this.recoverMissingFile = _recoverMissingFile,
     this.recoverMovedDownload = _recoverMovedDownload,
@@ -109,6 +111,8 @@ class PlaybackDependencies {
   final Future<String> Function(String) resolveNetworkSource;
   final Future<String> Function(String) resolveDownloadSource;
   final Future<void> Function(List<String>, int) prepareDownloadWindow;
+  final void Function() suspendDownloadWindow;
+  final void Function() releaseDownloadSources;
 
   /// Whether a `network://` Library song can play now, as autoplay asks
   /// before queueing it.
@@ -198,6 +202,10 @@ class PlaybackDependencies {
       NetworkStorageService.instance.resolve(source);
   static Future<void> _prepareDownloadWindow(List<String> sources, int index) =>
       DownloadPlaybackService.instance.prepareWindow(sources, index);
+  static void _releaseDownloadSources() =>
+      DownloadPlaybackService.instance.releaseSources();
+  static void _suspendDownloadWindow() =>
+      DownloadPlaybackService.instance.suspendWindow();
   static Future<String> _resolveDownloadSource(String source) =>
       DownloadPlaybackService.instance.resolve(source);
   static Future<bool> _networkSourceReachable(String source) =>

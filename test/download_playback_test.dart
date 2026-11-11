@@ -121,6 +121,195 @@ class _Queue extends DownloadQueueNotifier {
 
 void main() {
   test(
+    'selecting a stalled preload starts a fresh lookup without awaiting it',
+    () async {
+      final service = DownloadPlaybackService();
+      addTearDown(service.close);
+      final obsolete = Completer<String>();
+      var lookups = 0;
+      final first = service.registerLazy(() async => '/music/first.flac');
+      final next = service.registerLazy(
+        () =>
+            ++lookups == 1 ? obsolete.future : Future.value('/music/next.flac'),
+      );
+      await service.prepareWindow([first, next], 0);
+      expect(lookups, 1);
+      service.suspendWindow();
+      await service
+          .prepareWindow([first, next], 1)
+          .timeout(const Duration(seconds: 1));
+      expect(await service.resolve(next), '/music/next.flac');
+      expect(lookups, 2);
+      // Late completion of the cancelled lookup must not evict the fresh result.
+      obsolete.complete('/music/obsolete.flac');
+      await Future<void>.delayed(Duration.zero);
+      expect(await service.resolve(next), '/music/next.flac');
+      expect(lookups, 2);
+    },
+  );
+
+  test(
+    'progressive file readers retire outside current, next and outgoing tracks',
+    () async {
+      final directory = await Directory.systemTemp.createTemp('reader-window-');
+      final paths = <String, String>{};
+      for (var i = 0; i < 4; i++) {
+        final file = File('${directory.path}/$i.flac.partial');
+        await file.writeAsBytes([0x66, 0x4c, 0x61, 0x43]);
+        paths['$i'] = file.path;
+      }
+      final service = DownloadPlaybackService(
+        progressReader: () async => {
+          'items': {
+            for (final entry in paths.entries)
+              entry.key: {'playback_path': entry.value, 'bytes_total': 4},
+          },
+        },
+      );
+      final client = HttpClient();
+      addTearDown(() async {
+        client.close(force: true);
+        await service.close();
+        await directory.delete(recursive: true);
+      });
+      final sources = [
+        for (var i = 0; i < 4; i++) downloadPlaybackSource('$i'),
+      ];
+      for (var i = 0; i < 4; i++) {
+        service.registerItem(
+          '$i',
+          () => _item('$i', DownloadStatus.downloading),
+        );
+      }
+      await service.prepareWindow(sources, 0);
+      final first = await service.resolve(sources[0]);
+      await service.prepareWindow(sources, 1);
+      final second = await service.resolve(sources[1]);
+      await service.prepareWindow(sources, 2);
+      final retired = await (await client.headUrl(Uri.parse(first))).close();
+      final outgoing = await (await client.headUrl(Uri.parse(second))).close();
+      expect(retired.statusCode, HttpStatus.notFound);
+      expect(outgoing.statusCode, HttpStatus.ok);
+      await retired.drain<void>();
+      await outgoing.drain<void>();
+    },
+  );
+
+  test(
+    'session references never alias and expired references fail promptly',
+    () async {
+      final first = DownloadPlaybackService();
+      final second = DownloadPlaybackService();
+      addTearDown(first.close);
+      addTearDown(second.close);
+      final old = first.registerLazy(() async => '/music/old.flac');
+      final fresh = second.registerLazy(() async => '/music/new.flac');
+      expect(old, isNot(fresh));
+      await expectLater(
+        second.resolve(old).timeout(const Duration(seconds: 1)),
+        throwsStateError,
+      );
+      await second.close();
+      expect(
+        () => second.registerLazy(() async => '/music/new.flac'),
+        throwsStateError,
+      );
+      await expectLater(second.resolve(fresh), throwsStateError);
+    },
+  );
+
+  test(
+    'replacing queue retires callbacks and stopping blocks pending preparation',
+    () async {
+      final service = DownloadPlaybackService();
+      addTearDown(service.close);
+      final obsolete = service.registerLazy(() async => '/music/old.flac');
+      final next = service.registerLazy(() async => '/music/new.flac');
+      await service.prepareWindow([next], 0);
+      await expectLater(service.resolve(obsolete), throwsStateError);
+      final gate = Completer<void>();
+      var enqueued = false;
+      final pending = service.registerLazy(
+        () async => '',
+        prepareGuarded: (current) async {
+          await gate.future;
+          if (!current()) throw const DownloadPlaybackSelectionChanged();
+          enqueued = true;
+          return '/music/pending.flac';
+        },
+      );
+      final preparing = service.prepareWindow([pending], 0);
+      service.suspendWindow();
+      gate.complete();
+      await preparing;
+      expect(enqueued, isFalse);
+    },
+  );
+
+  for (final ending in ['cancel', 'failure', 'close', 'replace']) {
+    test(
+      'stalled progressive HTTP reader terminates promptly on $ending',
+      () async {
+        final directory = await Directory.systemTemp.createTemp(
+          'playback-abort-',
+        );
+        final file = File('${directory.path}/song.flac.partial');
+        await file.writeAsBytes([0x66, 0x4c, 0x61, 0x43, 1, 2, 3, 4]);
+        DownloadItem? item = _item('item', DownloadStatus.downloading);
+        final service = DownloadPlaybackService(
+          poll: const Duration(milliseconds: 5),
+          progressReader: () async => {
+            'items': {
+              'item': {'playback_path': file.path, 'bytes_total': 100},
+            },
+          },
+        );
+        final client = HttpClient();
+        addTearDown(() async {
+          client.close(force: true);
+          await service.close();
+          await directory.delete(recursive: true);
+        });
+        service.registerItem('item', () => item);
+        final url = await service.resolve(downloadPlaybackSource('item'));
+        final response = await (await client.getUrl(Uri.parse(url))).close();
+        final received = Completer<void>();
+        final completed = Completer<void>();
+        response.listen(
+          (bytes) {
+            if (!received.isCompleted) received.complete();
+          },
+          onDone: () {
+            if (!completed.isCompleted) completed.complete();
+          },
+          onError: (Object error) {
+            if (!completed.isCompleted) completed.complete();
+          },
+        );
+        await received.future.timeout(
+          const Duration(seconds: 1),
+          onTimeout: () => throw StateError("No initial bytes"),
+        );
+        switch (ending) {
+          case 'cancel':
+            item = null;
+          case 'failure':
+            item = _item('item', DownloadStatus.failed);
+          case 'close':
+            await service.close().timeout(const Duration(seconds: 1));
+          case 'replace':
+            await service.prepareWindow([], -1);
+        }
+        await completed.future.timeout(
+          const Duration(seconds: 1),
+          onTimeout: () => throw StateError("HTTP did not terminate"),
+        );
+        await service.close().timeout(const Duration(seconds: 1));
+      },
+    );
+  }
+
+  test(
     'play reuses a manual queued download without replacing or cancelling it',
     () async {
       final queue = _Queue();
@@ -516,7 +705,9 @@ void main() {
           .read(downloadPlaybackProvider)
           .fillMissingPaths(_tracks, [null, null], startIndex: 1);
 
-      expect(paths, ['mornye-download:lazy-1', 'mornye-download:lazy-2']);
+      expect(paths, hasLength(2));
+      expect(paths.every((path) => isDownloadPlaybackSource(path!)), isTrue);
+      expect(paths[0], isNot(paths[1]));
       expect(queue.state.items.map((item) => item.track.id), ['second']);
       expect(queue.prioritized, 'download-0');
       // Actual worker contract: completion is published, then queue row removed

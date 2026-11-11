@@ -343,7 +343,9 @@ Future<void> _pumpHome(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        lastfmWaveConfigurationProvider.overrideWith((ref) async => const LastfmWaveConfiguration()),
+        lastfmWaveConfigurationProvider.overrideWith(
+          (ref) async => const LastfmWaveConfiguration(),
+        ),
         settingsProvider.overrideWith(
           () => FixedSettingsNotifier(
             const AppSettings(

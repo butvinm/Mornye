@@ -102,6 +102,7 @@ class DownloadPlaybackCoordinator {
         service.registerItem(
           id,
           () => ref.read(downloadQueueProvider).lookup.byItemId[id],
+          ownerSource: reference,
         );
         if (ref.read(downloadQueueProvider).isPaused) queue.resumeQueue();
         return downloadPlaybackSource(id);

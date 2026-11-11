@@ -28,8 +28,7 @@ Confirm FVM uses the version in `.fvmrc`. Do not replace it with an arbitrary sy
 Use `python3 scripts/check_local_changes.py --list AREA` to inspect focused checks
 for `lastfm`, `playback`, `logging`, or `build`; run the relevant areas and review
 the diff. Native changes additionally require the relevant Cargo tests and
-`scripts/check_rust_backend.sh`. Historical failures listed below are not automatic
-exemptions. Preserve unrelated work and never stage secrets or
+`scripts/check_rust_backend.sh`. Check failures are not automatic exemptions. Preserve unrelated work and never stage secrets or
 artifacts. Commit the intended source, tests, and build changes before delivery.
 Do not fabricate retrospective commits for previous APKs. Explicit user
 instructions take precedence.
@@ -55,18 +54,17 @@ not prove catalog absence; test retrieval, identity, download and playback separ
 Completed downloads can disappear from queue state immediately, so regression
 coverage must include the final local/SAF handoff rather than only queue presence.
 
-### Historical baseline evidence
+### Release acceptance and failure evidence
 
-During November 2026, broad checks reported three missing `referenceColumns`
-arguments in `integration_test/native_cache_maintenance_test.dart` (then lines
-155, 216, 302), and a SQLite migration fixture lacking
-`audio_metadata_scan_version` / `format` columns. An early Link failure passed
-on isolated rerun and was not established as a permanent baseline failure.
+Stabilize on a feature/fix branch. Before integrating into local `master`, run the
+full Flutter analysis/test suite, applicable Rust checks, review the final diff,
+and audit an APK built from the approved commit. Ordinary small iteration still
+uses focused checks. Integrate with a fast-forward or an explicitly reviewed
+merge, preserving existing history; do not push without authorization.
 
-These observations are not current assertions or skip rules. On recurrence,
-record command, source commit, test name and error, then compare with an isolated
-baseline if necessary. Never turn this list into permanent blanket ignores or
-report the whole suite green when it was not.
+When checks fail, record command, source commit, test name and error. Compare an
+isolated baseline when needed; fix relevant defects instead of accumulating
+permanent skip lists. Report failures and skipped/device-only checks separately.
 
 ## 3. Deliver a local debug APK from that commit
 
@@ -111,6 +109,6 @@ updates only a matching local certificate, never bypasses an official signature.
 
 ## Avoid incremental debug APK size inflation
 
-Before distributing a debug APK, compare its total size with the sum of ZIP entry compressed sizes. Android incremental packaging can retain large unused gaps after changed native libraries or Dart kernels; this is not application payload growth. A measured case grew from 192 MB to 252 MB with unchanged entry contents.
+Before distributing a debug APK, compare its total size with the sum of ZIP entry compressed sizes. Android incremental packaging can retain large unused gaps after changed native libraries or Dart kernels; this is not application payload growth.
 
 For a fresh debug package, preserve the previous APK outside build outputs, remove only `build/app/intermediates/incremental/packageDebug`, `build/app/outputs/apk/debug`, and the generated `build/app/outputs/flutter-apk/app-arm64-v8a-debug.apk`, then rerun the identical Flutter debug build command (including Dart defines). Do not clean unrelated release outputs or the Rust build cache. Verify the new signature, package/ABI and compare uncompressed ZIP entry hashes with the previous APK when no source changes were intended.

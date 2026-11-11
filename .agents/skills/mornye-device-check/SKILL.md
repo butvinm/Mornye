@@ -72,3 +72,8 @@ Keep useful stage/provider/status/correlation information while redacting keys,
 cookies, signed URLs and private paths. Never share `.env`, authorization sessions
 or raw request dumps. Report what the user observed separately from automated
 checks; do not claim underlying provider availability is fixed from host tests alone.
+
+After process restart, completed downloads can be recovered by their stable track
+identity. Tracks that had only an in-memory pending-download reference and no
+completed file are omitted from the restored queue; select them again from the
+catalog or wave. Verify this separately from resume of a completed local track.

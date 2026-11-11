@@ -18,6 +18,26 @@ use the Flutter version in `.fvmrc` through FVM and the repository Rust toolchai
   unrelated changes, secrets, generated binaries, or logs into a commit.
 - Do not push, publish, install on a device, or clear user data without authorization.
 
+## Pre-release compatibility
+
+- This fork has not had its first release. Do not add migrations, backward
+  compatibility layers, or legacy-format support for previous test versions.
+  Prefer changing the current schema, formats, and interfaces directly. Revisit
+  this policy for the first release or an explicit compatibility requirement.
+- This does not authorize deleting existing user data without permission.
+
+## Stable branch
+
+- `master` is the local stable integration branch. Develop and experiment on
+  separate feature/fix branches created from `master`; do not edit directly on
+  `master`.
+- Integrate only reviewed, committed changes after the required checks and
+  artifact audit pass. Preserve existing branches/history; do not force-reset or
+  force-push to manufacture a clean release. Upstream `main` remains an upstream
+  merge source, not permission to publish this fork.
+- Report any remaining device-only validation explicitly; green host checks do
+  not justify an unconditional production-readiness guarantee.
+
 ## Changes and APK versions
 
 - Use meaningful regressions and focused formatting, analysis, and tests for the

@@ -39,6 +39,16 @@ class DownloadPlaybackService {
   final _lazy = <String, Future<String> Function(bool Function())>{};
   final _prioritize = <String, void Function(String)>{};
   final _prepared = <String, Future<String>>{};
+  final _preparing = <String>{};
+  final String _sessionId = List.generate(
+    12,
+    (_) => Random.secure().nextInt(256),
+  ).map((byte) => byte.toRadixString(16).padLeft(2, '0')).join();
+  final _preparedSources = <String, String>{};
+  int _cancelGeneration = 0;
+  Completer<void> _cancelled = Completer<void>();
+  String? _currentSource;
+  Set<String>? _readerSources;
   int _lazySequence = 0;
   int _windowGeneration = 0;
 
@@ -51,8 +61,20 @@ class DownloadPlaybackService {
   Future<HttpServer>? _server;
   bool _closed = false;
 
-  void registerItem(String itemId, DownloadItemReader read) {
+  void registerItem(
+    String itemId,
+    DownloadItemReader read, {
+    String? ownerSource,
+  }) {
+    if (_closed) throw StateError('Audio playback is unavailable');
     _items[itemId] = read;
+    if (ownerSource != null && isDownloadPlaybackSource(ownerSource)) {
+      _preparedSources[ownerSource.substring(
+        downloadPlaybackScheme.length + 1,
+      )] = downloadPlaybackSource(
+        itemId,
+      );
+    }
   }
 
   String registerLazy(
@@ -60,7 +82,8 @@ class DownloadPlaybackService {
     Future<String> Function(bool Function())? prepareGuarded,
     void Function(String)? prioritize,
   }) {
-    final id = 'lazy-${++_lazySequence}';
+    if (_closed) throw StateError('Audio playback is unavailable');
+    final id = 'lazy-$_sessionId-${++_lazySequence}';
     _lazy[id] = prepareGuarded ?? (_) => prepare();
     if (prioritize != null) _prioritize[id] = prioritize;
     return downloadPlaybackSource(id);
@@ -70,18 +93,127 @@ class DownloadPlaybackService {
     final existing = _prepared[id];
     if (existing != null) return existing;
     late final Future<String> pending;
-    pending = Future<String>.sync(() => _lazy[id]!(isCurrent ?? () => true))
-        .catchError((Object error, StackTrace stack) {
-          if (identical(_prepared[id], pending)) _prepared.remove(id);
-          Error.throwWithStackTrace(error, stack);
-        });
+    final cancellation = _cancelGeneration;
+    bool current() =>
+        !_closed &&
+        _lazy.containsKey(id) &&
+        cancellation == _cancelGeneration &&
+        (isCurrent?.call() ?? true);
+    pending =
+        Future<String>.sync(() {
+              if (!current()) throw const DownloadPlaybackSelectionChanged();
+              return _lazy[id]!(current);
+            })
+            .then((source) {
+              if (!current()) throw const DownloadPlaybackSelectionChanged();
+              _preparedSources[id] = source;
+              _preparing.remove(id);
+              return source;
+            })
+            .catchError((Object error, StackTrace stack) {
+              if (identical(_prepared[id], pending)) {
+                _prepared.remove(id);
+                _preparing.remove(id);
+              }
+              Error.throwWithStackTrace(error, stack);
+            });
     _prepared[id] = pending;
+    _preparing.add(id);
     return pending;
+  }
+
+  /// Stop player-owned readers/lookups without cancelling shared download jobs.
+  void suspendWindow() {
+    _windowGeneration++;
+    _cancelGeneration++;
+    if (!_cancelled.isCompleted) _cancelled.complete();
+    _cancelled = Completer<void>();
+    // A new selection must not await an obsolete lookup that may never finish.
+    // Settled sources remain reusable; shared download jobs are not cancelled.
+    for (final id in _preparing) {
+      _prepared.remove(id);
+    }
+    _preparing.clear();
+    for (final entry in _entries.values) {
+      unawaited(entry.close());
+    }
+    _entries.clear();
+  }
+
+  Future<T> _untilCancelled<T>(Future<T> operation) => Future.any([
+    operation,
+    _cancelled.future.then<T>(
+      (_) => throw const DownloadPlaybackSelectionChanged(),
+    ),
+  ]);
+
+  void releaseSources() {
+    suspendWindow();
+    _retainSources(const []);
+    _currentSource = null;
+    _readerSources = null;
+  }
+
+  Set<String> _sourceIds(Iterable<String> sources) {
+    final ids = <String>{};
+    void retain(String source) {
+      if (!isDownloadPlaybackSource(source)) return;
+      final id = source.substring(downloadPlaybackScheme.length + 1);
+      if (!ids.add(id)) return;
+      final prepared = _preparedSources[id];
+      if (prepared != null) retain(prepared);
+    }
+
+    for (final source in sources) {
+      retain(source);
+    }
+    return ids;
+  }
+
+  void _retainSources(List<String> sources) {
+    final retained = _sourceIds(sources);
+    _lazy.removeWhere((id, _) => !retained.contains(id));
+    _prioritize.removeWhere((id, _) => !retained.contains(id));
+    _prepared.removeWhere((id, _) => !retained.contains(id));
+    _preparing.removeWhere((id) => !retained.contains(id));
+    _preparedSources.removeWhere((id, _) => !retained.contains(id));
+    _items.removeWhere((id, _) => !retained.contains(id));
+    _completedPaths.removeWhere((id, _) => !retained.contains(id));
+    for (final id in _entries.keys.toList()) {
+      if (!retained.contains(id)) unawaited(_entries.remove(id)!.close());
+    }
+  }
+
+  void _checkItem(String itemId) {
+    if (_closed) throw StateError('Audio playback is unavailable');
+    if (_completedPaths.containsKey(itemId)) return;
+    final item = _items[itemId]?.call();
+    if (item == null) {
+      throw StateError('The download was cancelled or is no longer available');
+    }
+    if (item.status == DownloadStatus.failed ||
+        item.status == DownloadStatus.skipped) {
+      throw StateError(item.errorMessage);
+    }
   }
 
   /// The current item is scheduled first. The next lookup must never delay
   /// opening it; old window lookups cannot enqueue work after a skip.
   Future<void> prepareWindow(List<String> sources, int index) async {
+    _retainSources(sources);
+    final currentSource = index >= 0 && index < sources.length
+        ? sources[index]
+        : null;
+    _readerSources = {
+      ?_currentSource,
+      ?currentSource,
+      if (index >= 0 && index + 1 < sources.length) sources[index + 1],
+    };
+    _currentSource = currentSource;
+    final readerIds = _sourceIds(_readerSources!);
+    for (final id in _entries.keys.toList()) {
+      if (!readerIds.contains(id)) unawaited(_entries.remove(id)!.close());
+    }
     final generation = ++_windowGeneration;
     bool current() => !_closed && generation == _windowGeneration;
     Future<void> prepareAt(int position, {bool priority = false}) async {
@@ -106,7 +238,11 @@ class DownloadPlaybackService {
       }
     }
 
-    await prepareAt(index, priority: true);
+    try {
+      await _untilCancelled(prepareAt(index, priority: true));
+    } on DownloadPlaybackSelectionChanged {
+      return;
+    }
     if (current()) unawaited(prepareAt(index + 1));
   }
 
@@ -122,9 +258,11 @@ class DownloadPlaybackService {
 
   Future<String> resolve(String source) async {
     if (!isDownloadPlaybackSource(source)) return source;
+    if (_closed) throw StateError('Audio playback is unavailable');
+    final cancellation = _cancelGeneration;
     final itemId = source.substring(downloadPlaybackScheme.length + 1);
     if (_lazy.containsKey(itemId)) {
-      final prepared = await _prepare(itemId);
+      final prepared = await _untilCancelled(_prepare(itemId));
       PlaybackDiagnostics.event(
         'download_resolve',
         attempt: itemId,
@@ -137,10 +275,21 @@ class DownloadPlaybackService {
               : 'local',
         },
       );
+      if (_closed || cancellation != _cancelGeneration) {
+        throw const DownloadPlaybackSelectionChanged();
+      }
       return resolve(prepared);
+    }
+    if (!_items.containsKey(itemId) && !_completedPaths.containsKey(itemId)) {
+      throw StateError(
+        'This playback reference has expired; select the track again',
+      );
     }
     final timeout = Stopwatch()..start();
     while (!_closed) {
+      if (cancellation != _cancelGeneration) {
+        throw const DownloadPlaybackSelectionChanged();
+      }
       final completed = _completedPaths[itemId];
       if (completed != null) {
         PlaybackDiagnostics.event(
@@ -171,7 +320,10 @@ class DownloadPlaybackService {
         throw StateError('The download was cancelled');
       }
 
-      final progress = await _progressReader();
+      final progress = await _untilCancelled(_progressReader());
+      if (_closed || cancellation != _cancelGeneration) {
+        throw const DownloadPlaybackSelectionChanged();
+      }
       final items = progress['items'];
       final raw = items is Map ? items[itemId] : null;
       if (raw is Map) {
@@ -180,6 +332,10 @@ class DownloadPlaybackService {
         if (path.isNotEmpty && total > 0) {
           try {
             if (await _hasPlayableHeader(path)) {
+              if (_closed || cancellation != _cancelGeneration) {
+                throw const DownloadPlaybackSelectionChanged();
+              }
+              _checkItem(itemId);
               return await _serve(itemId, path, total);
             }
           } on FileSystemException {
@@ -197,8 +353,12 @@ class DownloadPlaybackService {
 
   Future<bool> _hasPlayableHeader(String path) async {
     final file = await File(path).open();
-    final bytes = await file.read(16);
-    await file.close();
+    late final List<int> bytes;
+    try {
+      bytes = await file.read(16);
+    } finally {
+      await file.close();
+    }
     bool matches(int offset, List<int> signature) {
       if (bytes.length < offset + signature.length) return false;
       for (var index = 0; index < signature.length; index++) {
@@ -219,26 +379,47 @@ class DownloadPlaybackService {
   }
 
   Future<String> _serve(String itemId, String path, int total) async {
+    final cancellation = _cancelGeneration;
+    void checkOwner() {
+      if (_closed ||
+          cancellation != _cancelGeneration ||
+          (_readerSources != null &&
+              !_sourceIds(_readerSources!).contains(itemId))) {
+        throw const DownloadPlaybackSelectionChanged();
+      }
+      _checkItem(itemId);
+    }
+
     final server = await (_server ??= _bind());
-    final entry = _entries.putIfAbsent(
-      itemId,
-      () => _ArrivingDownload(
-        file: File(path).openSync(),
-        total: total,
-        path: path,
-        poll: _poll,
-        patience: _patience,
-      ),
-    );
-    if (entry.total != total || entry.path != path) {
+    checkOwner();
+    var entry = _entries[itemId];
+    if (entry != null && (entry.total != total || entry.path != path)) {
+      _entries.remove(itemId);
       await entry.close();
-      _entries[itemId] = _ArrivingDownload(
-        file: await File(path).open(),
-        total: total,
-        path: path,
-        poll: _poll,
-        patience: _patience,
-      );
+      entry = null;
+    }
+    if (entry == null) {
+      checkOwner();
+      final file = await File(path).open();
+      try {
+        checkOwner();
+        // Another HTTP consumer may have opened this item while we awaited IO.
+        if (_entries.containsKey(itemId)) {
+          await file.close();
+        } else {
+          _entries[itemId] = _ArrivingDownload(
+            file: file,
+            total: total,
+            path: path,
+            poll: _poll,
+            patience: _patience,
+            checkActive: () => _checkItem(itemId),
+          );
+        }
+      } on Object {
+        await file.close();
+        rethrow;
+      }
     }
     return 'http://127.0.0.1:${server.port}/$_token/${Uri.encodeComponent(itemId)}';
   }
@@ -295,6 +476,7 @@ class DownloadPlaybackService {
     response.headers
       ..set(HttpHeaders.acceptRangesHeader, 'bytes')
       ..contentType = _contentType(entry.path);
+    response.bufferOutput = false;
     response.contentLength = end - start + 1;
     try {
       if (request.method == 'GET') {
@@ -311,7 +493,17 @@ class DownloadPlaybackService {
       }
       await response.close();
     } on Object {
-      await response.close();
+      // A truncated response or disconnected reader can make close fail too.
+      try {
+        final socket = await response.detachSocket(writeHeaders: false);
+        socket.destroy();
+      } on Object {
+        try {
+          await response.close();
+        } on Object {
+          /* Already disconnected. */
+        }
+      }
     }
   }
 
@@ -333,6 +525,9 @@ class DownloadPlaybackService {
 
   Future<void> close() async {
     _closed = true;
+    if (!_cancelled.isCompleted) _cancelled.complete();
+    _cancelGeneration++;
+    _windowGeneration++;
     for (final entry in _entries.values) {
       await entry.close();
     }
@@ -341,6 +536,8 @@ class DownloadPlaybackService {
     _lazy.clear();
     _prioritize.clear();
     _prepared.clear();
+    _preparing.clear();
+    _preparedSources.clear();
     _completedPaths.clear();
     final server = _server;
     _server = null;
@@ -355,6 +552,7 @@ class _ArrivingDownload {
     required this.path,
     required this.poll,
     required this.patience,
+    required this.checkActive,
   });
 
   final RandomAccessFile file;
@@ -362,6 +560,9 @@ class _ArrivingDownload {
   final String path;
   final Duration poll;
   final Duration patience;
+  final void Function() checkActive;
+  bool _closed = false;
+  Future<void>? _closing;
   Future<void> _readTail = Future<void>.value();
 
   Future<List<int>> read(int offset, int length) {
@@ -373,6 +574,8 @@ class _ArrivingDownload {
   Future<List<int>> _read(int offset, int length) async {
     final timeout = Stopwatch()..start();
     while (true) {
+      if (_closed) throw StateError('Audio reader closed');
+      checkActive();
       final available = await file.length();
       if (offset < available) {
         await file.setPosition(offset);
@@ -385,8 +588,11 @@ class _ArrivingDownload {
     }
   }
 
-  Future<void> close() async {
-    await _readTail;
-    await file.close();
+  Future<void> close() {
+    _closed = true;
+    return _closing ??= () async {
+      await _readTail;
+      await file.close();
+    }();
   }
 }

@@ -1,3 +1,6 @@
+import 'package:mornye/services/download_playback.dart';
+import 'package:mornye/models/download_item.dart';
+import 'package:mornye/models/track.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -576,6 +579,8 @@ MusicPlayerRuntime _runtime({
   Future<String> Function(String)? resolveNetworkSource,
   Future<String> Function(String)? resolveDownloadSource,
   Future<void> Function(List<String>, int)? prepareDownloadWindow,
+  void Function()? suspendDownloadWindow,
+  void Function()? releaseDownloadSources,
   Future<Map<String, dynamic>> Function(String)? readNetworkMetadata,
   CoverStore? coverStore,
 }) {
@@ -613,6 +618,8 @@ MusicPlayerRuntime _runtime({
       recoverMissingFile: recoverMissingFile ?? (_) async => null,
       recoverMovedDownload: recoverMovedDownload ?? (_, _, _) async => null,
       prepareDownloadWindow: prepareDownloadWindow ?? (_, _) async {},
+      suspendDownloadWindow: suspendDownloadWindow ?? () {},
+      releaseDownloadSources: releaseDownloadSources ?? () {},
       resolveDownloadSource:
           resolveDownloadSource ??
           (_) async => throw StateError('No download resolver'),
@@ -1531,6 +1538,79 @@ void main() {
       expect(handler.mediaItem.value?.id, _track.id);
     },
   );
+
+  for (final pendingKind in ['preparation', 'progress']) {
+    test(
+      'skip aborts unresolved download $pendingKind before serialized next play',
+      () async {
+        final gate = Completer<void>();
+        var enqueued = false;
+        final service = DownloadPlaybackService(
+          progressReader: () async {
+            await gate.future;
+            return {};
+          },
+        );
+        addTearDown(service.close);
+        final source = pendingKind == 'preparation'
+            ? service.registerLazy(
+                () async => '',
+                prepareGuarded: (current) async {
+                  await gate.future;
+                  if (!current()) {
+                    throw const DownloadPlaybackSelectionChanged();
+                  }
+                  enqueued = true;
+                  return '/music/late.flac';
+                },
+              )
+            : downloadPlaybackSource('pending');
+        if (pendingKind == 'progress') {
+          service.registerItem(
+            'pending',
+            () => DownloadItem(
+              id: 'pending',
+              service: 'provider',
+              createdAt: DateTime.utc(2026),
+              track: const Track(
+                id: 'pending',
+                name: 'Pending',
+                artistName: 'Artist',
+                albumName: '',
+                duration: 100,
+              ),
+            ),
+          );
+        }
+        final decks = <_Deck>[];
+        final handler = await _runtime(
+          decks: decks,
+          resolveDownloadSource: service.resolve,
+          prepareDownloadWindow: service.prepareWindow,
+          suspendDownloadWindow: service.suspendWindow,
+          releaseDownloadSources: service.releaseSources,
+        ).initialize();
+        final first = handler.setQueueAndPlay([
+          PlayableMedia(
+            id: 'pending',
+            source: source,
+            title: 'Pending',
+            artist: 'Artist',
+          ),
+          _track,
+        ]);
+        await _settle();
+        await handler.skipToNext().timeout(const Duration(seconds: 1));
+        await first;
+        expect(handler.mediaItem.value!.id, _track.id);
+        expect(handler.playbackState.value.playing, isTrue);
+        gate.complete();
+        await _settle();
+        expect(enqueued, isFalse);
+        expect(decks.single.sources, isNot(contains('/music/late.flac')));
+      },
+    );
+  }
 
   test(
     'download window follows selected player queue on next and skip',

@@ -1537,6 +1537,7 @@ class MusicPlayerHandler extends BaseAudioHandler
     Duration startPosition = Duration.zero,
   }) async {
     if (_disposed || index < 0 || index >= _media.length) return;
+    _dependencies.suspendDownloadWindow();
     if (_reloadingAfterServerDied) {
       _reloadingAfterServerDied = false;
     } else {
@@ -2257,6 +2258,7 @@ class MusicPlayerHandler extends BaseAudioHandler
 
   @override
   Future<void> stop({bool keepResume = false}) async {
+    _dependencies.suspendDownloadWindow();
     _runtime.personalization.finish();
     unawaited(_runtime.personalization.flush());
     unawaited(_runtime.taste.flush());
@@ -2593,8 +2595,9 @@ class MusicPlayerHandler extends BaseAudioHandler
   Future<void> dispose() => _disposeFuture ??= _dispose();
 
   Future<void> _dispose() async {
-    _autoplay.reset();
     _disposed = true;
+    _dependencies.releaseDownloadSources();
+    _autoplay.reset();
     _runtime.personalization.finish();
     await _runtime.personalization.flush();
     if (_dependencies.isIOS) WidgetsBinding.instance.removeObserver(this);

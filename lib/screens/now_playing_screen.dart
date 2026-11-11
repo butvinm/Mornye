@@ -1,3 +1,4 @@
+import 'package:mornye/models/track.dart';
 import 'package:mornye/widgets/wave_controls.dart';
 import 'dart:async';
 
@@ -458,10 +459,14 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
         opacity: contentOpacity,
         hidden: !mornye && _lyricsImmersive,
         child: AppBar(
-          backgroundColor: mornye || materialBackdrop
+          backgroundColor: overCover || mornye
+              ? Colors.black.withValues(alpha: .65)
+              : materialBackdrop
               ? Colors.transparent
               : colorScheme.surface,
-          foregroundColor: overCover ? Colors.white : colorScheme.onSurface,
+          foregroundColor: overCover || mornye
+              ? Colors.white
+              : colorScheme.onSurface,
           surfaceTintColor: Colors.transparent,
           systemOverlayStyle: mornye || overCover
               ? SystemUiOverlayStyle.light
@@ -484,15 +489,15 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
             onPressed: _minimize,
           ),
           actions: [
-            LinkDevicesButton(color: overCover ? Colors.white : null),
+            LinkDevicesButton(color: overCover || mornye ? Colors.white : null),
             AppIconButton(
               tooltip: context.l10n.nowPlayingUpNext,
-              color: overCover ? Colors.white : null,
+              color: overCover || mornye ? Colors.white : null,
               icon: const AppIcon(Icons.queue_music),
               onPressed: () => _showQueueSheet(context, colorScheme),
             ),
             AppIconButton(
-              color: overCover ? Colors.white : null,
+              color: overCover || mornye ? Colors.white : null,
               tooltip: MaterialLocalizations.of(context).moreButtonTooltip,
               icon: const AppIcon(Icons.more_vert),
               onPressed: () => _showMoreActions(
@@ -1362,7 +1367,21 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
       _log.w('Failed to resolve local album: $e');
     }
 
+    Track? catalogTrack;
+    try {
+      catalogTrack = await ref.read(
+        playerCollectionTrackProvider(mediaItem).future,
+      );
+    } catch (error) {
+      _log.w('Failed to resolve catalog album: $error');
+    }
     if (!mounted) return;
+    if (catalogTrack != null &&
+        (catalogTrack.albumId?.trim().isNotEmpty ?? false)) {
+      await navigateToTrackAlbum(context, catalogTrack);
+      return;
+    }
+
     await navigateToAlbum(
       context,
       albumName: albumName,

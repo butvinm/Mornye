@@ -19,6 +19,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:mornye/controllers/player_metadata_controller.dart';
 import 'package:mornye/l10n/l10n.dart';
 import 'package:mornye/models/track.dart';
+import 'package:mornye/models/library_database_models.dart';
+import 'package:mornye/screens/extension_collection_screens.dart';
 import 'package:mornye/providers/library_collections_provider.dart';
 import 'package:mornye/providers/music_player_provider.dart';
 import 'package:mornye/providers/settings_provider.dart';
@@ -88,6 +90,7 @@ void main() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(backendChannel, (call) async {
           if (call.method == 'setScreenAwake') return null;
+          if (call.method == 'getExtensionAlbum') return null;
           if (call.method == 'runNativeDataJob') {
             final arguments = (call.arguments as Map).cast<String, dynamic>();
             final request =
@@ -177,6 +180,7 @@ void main() {
     MotionArtwork? motionArtwork,
     MusicPlayerController? controller,
     List<MediaItem> queue = const [],
+    Track? collectionTrack,
   }) async {
     tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1;
@@ -198,14 +202,16 @@ void main() {
             (ref, source) => Completer<VideoPlayerController>().future,
           ),
           playerCollectionTrackProvider.overrideWith(
-            (ref, item) async => Track(
-              id: item.id,
-              name: item.title,
-              artistName: item.artist ?? '',
-              albumName: item.album ?? '',
-              duration: item.duration?.inSeconds ?? 0,
-              source: 'local',
-            ),
+            (ref, item) async =>
+                collectionTrack ??
+                Track(
+                  id: item.id,
+                  name: item.title,
+                  artistName: item.artist ?? '',
+                  albumName: item.album ?? '',
+                  duration: item.duration?.inSeconds ?? 0,
+                  source: 'local',
+                ),
           ),
           libraryCollectionsProvider.overrideWith(_TestCollections.new),
           playbackStateProvider.overrideWith(
@@ -624,6 +630,14 @@ void main() {
           .read(settingsProvider.notifier)
           .setPlayerCoverStyle('fullscreen');
       await settlePlayer(tester);
+      final toolbar = tester.widget<AppBar>(find.byType(AppBar).first);
+      expect(toolbar.foregroundColor, Colors.white);
+      final overWhiteArt = Color.alphaBlend(
+        toolbar.backgroundColor!,
+        Colors.white,
+      );
+      final whiteTextContrast = 1.05 / (overWhiteArt.computeLuminance() + .05);
+      expect(whiteTextContrast, greaterThanOrEqualTo(4.5));
       if (mornye) {
         expect(
           tester
@@ -4985,6 +4999,45 @@ void main() {
     expect(tester.getRect(lyric).left, closeTo(24, 1));
   });
 
+  testWidgets('Now Playing opens the known catalog album without name search', (
+    tester,
+  ) async {
+    const track = Track(
+      id: 'deezer:345',
+      name: 'Use Me To Use You',
+      artistName: 'Trapt',
+      albumName: 'Someone In Control',
+      albumId: 'deezer:340914',
+      source: 'deezer',
+      duration: 180,
+    );
+    await pumpNowPlaying(
+      tester,
+      controller: _NoLocalAlbumPlayer(),
+      collectionTrack: track,
+    );
+    mediaItems.add(
+      const MediaItem(
+        id: 'cached-wave',
+        title: 'Use Me To Use You',
+        artist: 'Trapt',
+        album: 'Someone In Control',
+        extras: {'source': ''},
+      ),
+    );
+    await settlePlayer(tester);
+    await tester.tap(findAppIcon(Icons.more_vert));
+    await settlePlayer(tester);
+    await tester.tap(find.text('Go to Album'));
+    await settlePlayer(tester);
+    final album = tester.widget<ExtensionAlbumScreen>(
+      find.byType(ExtensionAlbumScreen),
+    );
+    expect(album.albumId, 'deezer:340914');
+    expect(album.extensionId, 'deezer');
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('Now Playing menu exposes Go to Album when album is known', (
     tester,
   ) async {
@@ -5154,4 +5207,10 @@ class _TestCollections extends LibraryCollectionsNotifier {
     );
     return added;
   }
+}
+
+class _NoLocalAlbumPlayer extends MusicPlayerController {
+  @override
+  Future<({LocalLibraryItem item, List<LocalLibraryItem> tracks})?>
+  localAlbumFor(String mediaId) async => null;
 }

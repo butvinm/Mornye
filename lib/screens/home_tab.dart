@@ -888,6 +888,7 @@ class _HomeTabState extends ConsumerState<HomeTab>
         !hasExploreContent &&
         !hasResults;
     final searchToolbar = _offersLibraryScope;
+    final waveHome = _showsHome && !hasSearchInput && !hasResults;
     final showLibraryResults = _searchingLibrary && hasSearchInput;
     // As in Music, the library scope waits for words without recents or
     // Browse.
@@ -962,6 +963,20 @@ class _HomeTabState extends ConsumerState<HomeTab>
             slivers: [
               if (searchToolbar)
                 _buildDesktopSearchToolbarSliver()
+              else if (waveHome)
+                SliverAppBar(
+                  pinned: true,
+                  automaticallyImplyLeading: false,
+                  toolbarHeight: showSearchBar ? 72 : kToolbarHeight,
+                  titleSpacing: 16 + homeContentInset(context),
+                  title: showSearchBar
+                      ? _buildSearchBar()
+                      : Text(context.l10n.homeTitle),
+                  actions:
+                      !showSearchBar && context.isMornye && !isDesktopPlatform
+                      ? const [HomeProfileButton()]
+                      : null,
+                )
               else
                 _buildHeaderSliver(greeting: _showsHome ? null : greeting),
               if (_showsHome) const SliverToBoxAdapter(child: AppCrashBanner()),
@@ -974,7 +989,7 @@ class _HomeTabState extends ConsumerState<HomeTab>
                   screenHeight: screenHeight,
                   showEmptyHomeState: showEmptyHomeState,
                 ),
-              if (showSearchBar && !searchToolbar)
+              if (showSearchBar && !searchToolbar && !waveHome)
                 _buildSearchBarSliver(
                   hasResults: hasResults,
                   showExplore: showFeedSurface,

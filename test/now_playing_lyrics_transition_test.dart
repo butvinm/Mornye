@@ -60,6 +60,7 @@ import 'package:mornye/widgets/player_metadata_title.dart';
 import 'package:mornye/widgets/player_playback_controls.dart';
 import 'package:mornye/widgets/playback_seek_slider.dart';
 import 'package:mornye/widgets/player_artwork.dart';
+import 'package:mornye/widgets/player_queue_sheet.dart';
 
 import 'support/app_icon_finder.dart';
 
@@ -369,6 +370,40 @@ void main() {
       },
     );
   }
+
+  testWidgets(
+    'Material phone exposes favorite and scrolls to track wave without opening queue',
+    (tester) async {
+      await pumpNowPlaying(
+        tester,
+        theme: AppTheme.light(),
+        size: const Size(360, 750),
+      );
+      mediaItems.add(item('first'));
+      await settlePlayer(tester);
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(NowPlayingScreen)),
+      );
+      container
+          .read(settingsProvider.notifier)
+          .setPlayerCoverStyle('fullscreen');
+      await settlePlayer(tester);
+
+      expect(
+        find.byType(MornyePlayerFavoriteButton).hitTestable(),
+        findsOneWidget,
+      );
+      expect(find.text('Wave by track').hitTestable(), findsNothing);
+      await tester.drag(
+        find.byType(PlayerMetadataTitle),
+        const Offset(0, -350),
+      );
+      await settlePlayer(tester);
+      expect(find.byType(PlayerQueueSheet), findsNothing);
+      expect(find.text('Wave by track').hitTestable(), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('Material track titles never overlap during rapid skips', (
     tester,

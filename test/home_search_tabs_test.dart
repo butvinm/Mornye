@@ -322,8 +322,13 @@ void main() {
       pages.jumpToPage(0);
       await tester.pump();
 
-      expect(find.text('Shortcuts'), findsOneWidget);
       expect(tester.getTopLeft(find.byType(TextField)).dy, lessThan(300));
+      await tester.scrollUntilVisible(
+        find.text('Shortcuts'),
+        250,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(find.text('Shortcuts'), findsOneWidget);
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
     });

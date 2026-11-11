@@ -12,6 +12,7 @@ import 'package:mornye/routes/now_playing_route.dart';
 import 'package:mornye/theme/app_motion.dart';
 import 'package:mornye/utils/playback_seek_preview.dart';
 import 'package:mornye/widgets/player_artwork.dart';
+import 'package:mornye/widgets/mornye_player_favorite_button.dart';
 import 'package:mornye/widgets/player_compact_bar.dart';
 import 'package:mornye/widgets/player_gesture_regions.dart';
 import 'package:mornye/widgets/player_lyrics_controls.dart';
@@ -266,16 +267,11 @@ class MaterialPlayerLayout extends StatelessWidget {
                 hidden: immersive && showLyrics,
                 child: Padding(
                   padding: const EdgeInsets.only(top: 12),
-                  child: PlayerQueueSwipeRegion(
-                    onOpenQueue: onOpenQueue,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      // Short phones keep the room for artwork and lyrics;
-                      // the hardware buttons still set the volume there.
-                      children: _metadataAndControls(
-                        context,
-                        showVolume: constraints.maxHeight >= 600,
-                      ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: _metadataAndControls(
+                      context,
+                      showVolume: constraints.maxHeight >= 600,
                     ),
                   ),
                 ),
@@ -401,6 +397,10 @@ class MaterialPlayerLayout extends StatelessWidget {
                         ),
                       ],
                     ),
+                  ),
+                  MornyePlayerFavoriteButton(
+                    mediaItem: mediaItem,
+                    color: colorScheme.onSurface,
                   ),
                 ],
               ),

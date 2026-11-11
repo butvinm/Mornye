@@ -44,7 +44,7 @@ class _WaveHero extends ConsumerWidget {
       context,
       rootNavigator: true,
     ).push(NowPlayingRoute(child: const NowPlayingScreen()));
-    final compact = MediaQuery.sizeOf(context).height < 720;
+    final compact = MediaQuery.sizeOf(context).height < 850;
 
     return Container(
       decoration: BoxDecoration(
@@ -120,7 +120,7 @@ class _WaveHero extends ConsumerWidget {
               ),
             ],
           ),
-          SizedBox(height: compact ? 12 : 28),
+          SizedBox(height: compact ? 4 : 20),
           if (onboarding) ...[
             Text(
               waveText(context, 'Музыка под твой вкус', 'Music for your taste'),
@@ -185,7 +185,7 @@ class _WaveHero extends ConsumerWidget {
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(18),
                   child: SizedBox.square(
-                    dimension: compact ? 96 : 120,
+                    dimension: compact ? 72 : 120,
                     child: PlayerArtwork(
                       artUri: media.artUri?.toString(),
                       colorScheme: colors,
@@ -193,7 +193,7 @@ class _WaveHero extends ConsumerWidget {
                   ),
                 ),
               ),
-            if (!personal) const SizedBox(height: 20),
+            if (!personal) SizedBox(height: compact ? 12 : 20),
             Center(
               child: SizedBox.square(
                 dimension: personal ? (compact ? 100 : 120) : 64,
@@ -221,7 +221,7 @@ class _WaveHero extends ConsumerWidget {
                 ),
               ),
             ),
-            const SizedBox(height: 20),
+            SizedBox(height: compact ? 12 : 20),
             if (media != null)
               Material(
                 color: colors.surface.withValues(alpha: .8),

@@ -68,6 +68,10 @@ void main() {
     await tester.pump();
     await tester.pump();
 
+    final header = tester.widget<SliverAppBar>(find.byType(SliverAppBar).first);
+    expect(header.expandedHeight, isNull);
+    expect(header.toolbarHeight, lessThanOrEqualTo(72));
+
     await tester.scrollUntilVisible(
       find.text('Saved song'),
       300,

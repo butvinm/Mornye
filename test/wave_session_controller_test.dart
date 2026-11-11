@@ -108,17 +108,19 @@ class _Storage implements LastfmAccountStorage {
 }
 
 class _Wave extends WaveSessionController {
-  _Wave({required super.service, required super.prepareAudio})
-    : super(
-        libraryLoader: (_) async => [],
-        resolveCandidate: (candidate) async => Track(
-          id: candidate.title,
-          name: candidate.title,
-          artistName: candidate.artist,
-          albumName: 'Album',
-          duration: 180,
-        ),
-      );
+  _Wave({
+    required super.service,
+    required super.prepareAudio,
+    required super.libraryLoader,
+  }) : super(
+         resolveCandidate: (candidate) async => Track(
+           id: candidate.title,
+           name: candidate.title,
+           artistName: candidate.artist,
+           albumName: 'Album',
+           duration: 180,
+         ),
+       );
   @override
   Future<void> ensureLoaded() async {}
   @override
@@ -157,7 +159,10 @@ void main() {
       WaveSessionController wave,
     })
   >
-  harness(Future<PlayableMedia?> Function(Track) prepare) async {
+  harness(
+    Future<PlayableMedia?> Function(Track) prepare, {
+    Future<List<PlayableMedia>> Function(PlayableMedia)? libraryLoader,
+  }) async {
     final handler = _Handler();
     final service = LastfmWaveService(
       client: MockClient((request) async {
@@ -169,7 +174,11 @@ void main() {
                     'similarartists': {'artist': <Object>[]},
                   }
                 : {
-                    'toptracks': {
+                    (method == 'track.getSimilar'
+                        ? 'similartracks'
+                        : method == 'tag.getTopTracks'
+                        ? 'tracks'
+                        : 'toptracks'): {
                       'track': [
                         for (var i = 0; i < 15; i++)
                           {
@@ -203,7 +212,11 @@ void main() {
           const LastfmAppCredentials(apiKey: 'key', sharedSecret: 'secret'),
         ),
         waveSessionProvider.overrideWith(
-          () => _Wave(service: service, prepareAudio: prepare),
+          () => _Wave(
+            service: service,
+            prepareAudio: prepare,
+            libraryLoader: libraryLoader ?? (_) async => [],
+          ),
         ),
       ],
     );
@@ -220,6 +233,101 @@ void main() {
       container: container,
       handler: handler,
       wave: container.read(waveSessionProvider.notifier),
+    );
+  }
+
+  for (final kind in [
+    WaveKind.track,
+    WaveKind.artist,
+    WaveKind.album,
+    WaveKind.genre,
+  ]) {
+    test(
+      '$kind failures keep current song without unrelated Library fallback',
+      () async {
+        var libraryCalls = 0;
+        var prepareCalls = 0;
+        final h = await harness(
+          (_) async {
+            prepareCalls++;
+            return null;
+          },
+          libraryLoader: (_) async {
+            libraryCalls++;
+            return [
+              const PlayableMedia(
+                id: 'unrelated',
+                source: '/manual/unrelated.flac',
+                title: 'Unrelated',
+                artist: 'Other',
+              ),
+            ];
+          },
+        );
+        const seed = Track(
+          id: 'seed',
+          name: 'Duality',
+          artistName: 'Slipknot',
+          albumName: 'Album',
+          duration: 180,
+        );
+        await h.handler.setQueueAndPlay([media(seed)]);
+        await h.wave.start(
+          WaveContext(
+            kind: kind,
+            title: 'Slipknot',
+            artist: 'Slipknot',
+            track: seed,
+            albumTracks: [seed],
+          ),
+          preserveCurrent: true,
+        );
+        await settle();
+        expect(prepareCalls, 8);
+        expect(libraryCalls, 0);
+        expect(h.handler.queue.value.map((item) => item.id), ['seed']);
+        expect(h.handler.mediaItem.value?.id, 'seed');
+        final state = h.container.read(waveSessionProvider);
+        expect(state.context.kind, kind);
+        expect(state.offline, isFalse);
+        expect(state.error, isNotNull);
+      },
+    );
+  }
+
+  for (final offline in [false, true]) {
+    test(
+      'personal wave saved fallback reports actual connectivity (offline: $offline)',
+      () async {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(
+              const MethodChannel('dev.fluttercommunity.plus/connectivity'),
+              (_) async => [offline ? 'none' : 'wifi'],
+            );
+        final h = await harness(
+          (_) async => null,
+          libraryLoader: (_) async => [
+            const PlayableMedia(
+              id: 'saved',
+              source: '/manual/saved.flac',
+              title: 'Saved',
+              artist: 'Artist',
+            ),
+          ],
+        );
+        const seed = Track(
+          id: 'seed',
+          name: 'Seed',
+          artistName: 'Artist',
+          albumName: 'Album',
+          duration: 180,
+        );
+        await h.handler.setQueueAndPlay([media(seed)]);
+        await h.wave.start(const WaveContext(), preserveCurrent: true);
+        await settle();
+        expect(h.handler.queue.value.map((item) => item.id), contains('saved'));
+        expect(h.container.read(waveSessionProvider).offline, offline);
+      },
     );
   }
 

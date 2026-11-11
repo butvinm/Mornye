@@ -701,9 +701,8 @@ class WaveSessionController extends Notifier<WaveSessionState> {
           if (artists.isNotEmpty) await artist(artists[page % artists.length]);
         }
       }
-      if (current()) state = state.copyWith(offline: false);
     } on Object {
-      if (current()) state = state.copyWith(offline: true);
+      AppLogger('Wave').w('recommendations_unavailable');
     }
     if (!current()) return;
     if (context.kind == WaveKind.personal &&
@@ -741,6 +740,8 @@ class WaveSessionController extends Notifier<WaveSessionState> {
     final offline = (await Connectivity().checkConnectivity()).contains(
       ConnectivityResult.none,
     );
+    if (!current()) return null;
+    state = state.copyWith(offline: offline);
     if (!offline && _pool.isEmpty) await _populate();
     if (!current()) return null;
     var attempts = 0;
@@ -786,6 +787,16 @@ class WaveSessionController extends Notifier<WaveSessionState> {
       }
     }
     if (!current()) return null;
+    if (state.context.kind != WaveKind.personal) {
+      state = state.copyWith(
+        error:
+            state.error ??
+            (offline
+                ? 'Нет сети для продолжения этой волны. Подключитесь и нажмите «Повторить» или откройте библиотеку.'
+                : 'Не удалось найти доступные композиции для этой волны. Нажмите «Повторить» или выберите другую волну.'),
+      );
+      return null;
+    }
     final cached = _cache?.tracks ?? [];
     for (final track in cached.reversed) {
       final key = waveTrackKey(track.artistName, track.name);
@@ -796,7 +807,7 @@ class WaveSessionController extends Notifier<WaveSessionState> {
       if (path == null) continue;
       _recent.add(key);
       if (_recent.length > 100) _recent.removeAt(0);
-      state = state.copyWith(offline: true);
+      state = state.copyWith(offline: offline);
       _resolved[key] = track;
       return playableFromTrack(track, path);
     }
@@ -823,7 +834,7 @@ class WaveSessionController extends Notifier<WaveSessionState> {
         }
         _recent.add(key);
         if (_recent.length > 100) _recent.removeAt(0);
-        state = state.copyWith(offline: true);
+        state = state.copyWith(offline: offline);
         return media;
       }
     }

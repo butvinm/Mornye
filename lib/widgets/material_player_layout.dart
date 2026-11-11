@@ -265,13 +265,21 @@ class MaterialPlayerLayout extends StatelessWidget {
               Expanded(child: visual()),
               PlayerLyricsControlsCollapse(
                 hidden: immersive && showLyrics,
-                child: Padding(
-                  padding: const EdgeInsets.only(top: 12),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: _metadataAndControls(
-                      context,
-                      showVolume: constraints.maxHeight >= 600,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: fullScreenArtwork ? colorScheme.surface : null,
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(24),
+                    ),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: _metadataAndControls(
+                        context,
+                        showVolume: constraints.maxHeight >= 600,
+                      ),
                     ),
                   ),
                 ),

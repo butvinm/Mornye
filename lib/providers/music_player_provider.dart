@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math';
 
 import 'package:audio_service/audio_service.dart';
@@ -138,6 +139,16 @@ Future<UnifiedLibraryItem?> _libraryItemForMedia(
 /// playback started from a file path rather than a Library row ID.
 final playerCollectionTrackProvider = FutureProvider.autoDispose
     .family<Track, MediaItem>((ref, item) async {
+      final catalog = item.extras?['catalogTrack'];
+      if (catalog is String && catalog.isNotEmpty) {
+        try {
+          return Track.fromJson(
+            Map<String, dynamic>.from(jsonDecode(catalog) as Map),
+          );
+        } on Object {
+          // A malformed external media item can still use the Library identity.
+        }
+      }
       final match = await _libraryItemForMedia(
         ref,
         id: item.id,

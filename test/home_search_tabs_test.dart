@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:mornye/providers/lastfm_wave_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mornye/l10n/app_localizations.dart';
@@ -344,9 +343,6 @@ void main() {
         await tester.pumpWidget(
           ProviderScope(
             overrides: [
-              lastfmWaveConfigurationProvider.overrideWith(
-                (ref) async => const LastfmWaveConfiguration(),
-              ),
               settingsProvider.overrideWith(_Settings.new),
               extensionProvider.overrideWith(_Extensions.new),
               exploreProvider.overrideWith(
@@ -461,9 +457,6 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          lastfmWaveConfigurationProvider.overrideWith(
-            (ref) async => const LastfmWaveConfiguration(),
-          ),
           settingsProvider.overrideWith(_Settings.new),
           extensionProvider.overrideWith(_Extensions.new),
           exploreProvider.overrideWith(
@@ -497,13 +490,32 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    Future<void> reveal(String title) async {
+      final vertical = find
+          .byWidgetPredicate(
+            (widget) =>
+                widget is Scrollable &&
+                widget.axisDirection == AxisDirection.down,
+          )
+          .first;
+      tester.state<ScrollableState>(vertical).position.jumpTo(0);
+      await tester.pump();
+      await tester.scrollUntilVisible(
+        find.text(title),
+        250,
+        scrollable: vertical,
+      );
+    }
+
     // M3's 24dp window margin, not the centered reading column.
     final search = tester.getRect(find.byType(AppSearchField));
     expect(search.left, 24);
     expect(search.right, size.width - 24, reason: 'the search runs full');
     for (final title in ['New', 'Best New Songs']) {
+      await reveal(title);
       expect(tester.getTopLeft(find.text(title)).dx, 24, reason: title);
     }
+    await reveal('new album 0');
     expect(
       tester.getTopLeft(find.text('new album 0')).dx,
       24,
@@ -511,6 +523,7 @@ void main() {
     );
     // Both shelves still scroll to the window's edge.
     for (final title in ['new album 0', 'songs album 0']) {
+      await reveal(title);
       final shelf = find
           .ancestor(of: find.text(title), matching: find.byType(ListView))
           .first;
@@ -530,9 +543,6 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
-            lastfmWaveConfigurationProvider.overrideWith(
-              (ref) async => const LastfmWaveConfiguration(),
-            ),
             settingsProvider.overrideWith(_Settings.new),
             extensionProvider.overrideWith(_Extensions.new),
             exploreProvider.overrideWith(_Explore.new),
@@ -602,9 +612,6 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          lastfmWaveConfigurationProvider.overrideWith(
-            (ref) async => const LastfmWaveConfiguration(),
-          ),
           settingsProvider.overrideWith(_Settings.new),
           extensionProvider.overrideWith(_Extensions.new),
           exploreProvider.overrideWith(_Explore.new),
@@ -646,9 +653,6 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          lastfmWaveConfigurationProvider.overrideWith(
-            (ref) async => const LastfmWaveConfiguration(),
-          ),
           settingsProvider.overrideWith(_Settings.new),
           extensionProvider.overrideWith(_Extensions.new),
           exploreProvider.overrideWith(_Explore.new),
@@ -711,9 +715,6 @@ void main() {
         await tester.pumpWidget(
           ProviderScope(
             overrides: [
-              lastfmWaveConfigurationProvider.overrideWith(
-                (ref) async => const LastfmWaveConfiguration(),
-              ),
               settingsProvider.overrideWith(_Settings.new),
               extensionProvider.overrideWith(_Extensions.new),
               exploreProvider.overrideWith(_Explore.new),
@@ -794,9 +795,6 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          lastfmWaveConfigurationProvider.overrideWith(
-            (ref) async => const LastfmWaveConfiguration(),
-          ),
           settingsProvider.overrideWith(_Settings.new),
           extensionProvider.overrideWith(_Extensions.new),
           exploreProvider.overrideWith(_Explore.new),
@@ -836,9 +834,6 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          lastfmWaveConfigurationProvider.overrideWith(
-            (ref) async => const LastfmWaveConfiguration(),
-          ),
           settingsProvider.overrideWith(_Settings.new),
           extensionProvider.overrideWith(_Extensions.new),
           exploreProvider.overrideWith(
@@ -950,9 +945,6 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
-            lastfmWaveConfigurationProvider.overrideWith(
-              (ref) async => const LastfmWaveConfiguration(),
-            ),
             settingsProvider.overrideWith(_Settings.new),
             extensionProvider.overrideWith(
               withSearchExtension ? _Extensions.new : _NoExtensions.new,
@@ -1053,9 +1045,6 @@ Future<void> _pumpStartupHome(
 }) => tester.pumpWidget(
   ProviderScope(
     overrides: [
-      lastfmWaveConfigurationProvider.overrideWith(
-        (ref) async => const LastfmWaveConfiguration(),
-      ),
       settingsProvider.overrideWith(() => _StartupSettings(feedDisabled)),
       extensionProvider.overrideWith(() => extensions),
       exploreProvider.overrideWith(() => explore),

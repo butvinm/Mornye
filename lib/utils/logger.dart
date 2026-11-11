@@ -166,6 +166,7 @@ class LogBuffer extends ChangeNotifier {
       });
     return ordered.map((entry) => entry.$2).toList();
   }
+
   int get length => _entries.length + _diagnostics.length;
 
   void add(LogEntry entry) {

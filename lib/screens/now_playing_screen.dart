@@ -1,3 +1,4 @@
+import 'package:mornye/widgets/wave_controls.dart';
 import 'dart:async';
 
 import 'package:audio_service/audio_service.dart';
@@ -442,8 +443,8 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
 
     // The embedded desktop player keeps a toolbar for its minimize button,
     // which a route reaches by swiping down instead.
-    final double? mornyeToolbarHeight = !mornye
-        ? null
+    final double mornyeToolbarHeight = !mornye
+        ? kToolbarHeight
         : widget.embedded
         ? 48
         : MediaQuery.orientationOf(context) == Orientation.landscape
@@ -465,65 +466,43 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
           systemOverlayStyle: mornye || overCover
               ? SystemUiOverlayStyle.light
               : null,
-          toolbarHeight: mornyeToolbarHeight ?? kToolbarHeight,
+          toolbarHeight: mornyeToolbarHeight,
           automaticallyImplyLeading: false,
-          title: mornye
-              ? MediaQuery.orientationOf(context) == Orientation.landscape ||
-                        widget.embedded
-                    ? null
-                    : IconButton(
-                        tooltip: context.l10n.nowPlayingMinimize,
-                        onPressed: _minimize,
-                        icon: Container(
-                          width: 36,
-                          height: 5,
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.4),
-                            borderRadius: BorderRadius.circular(3),
-                          ),
-                        ),
-                      )
-              : Text(
-                  context.l10n.nowPlayingTitle,
-                  // The app theme's title style carries its own colour.
-                  style: overCover
-                      ? const TextStyle(color: Colors.white)
-                      : null,
+          title: mornyeToolbarHeight == 0
+              ? null
+              : WavePlayerHeading(
+                  color: overCover || mornye
+                      ? Colors.white
+                      : colorScheme.onSurface,
                 ),
           centerTitle: true,
-          leading: mornye && !widget.embedded
-              ? null
-              : AppIconButton(
-                  key: const ValueKey('now-playing-minimize'),
-                  tooltip: _minimizeTooltip(context),
-                  color: overCover || mornye ? Colors.white : null,
-                  icon: const AppIcon(Icons.keyboard_arrow_down),
-                  onPressed: _minimize,
-                ),
-          actions: mornye
-              ? null
-              : [
-                  LinkDevicesButton(color: overCover ? Colors.white : null),
-                  AppIconButton(
-                    tooltip: context.l10n.nowPlayingUpNext,
-                    color: overCover ? Colors.white : null,
-                    icon: const AppIcon(Icons.queue_music),
-                    onPressed: () => _showQueueSheet(context, colorScheme),
-                  ),
-                  AppIconButton(
-                    color: overCover ? Colors.white : null,
-                    tooltip: MaterialLocalizations.of(
-                      context,
-                    ).moreButtonTooltip,
-                    icon: const AppIcon(Icons.more_vert),
-                    onPressed: () => _showMoreActions(
-                      context: context,
-                      mediaItem: mediaItem,
-                      source: source,
-                      colorScheme: colorScheme,
-                    ),
-                  ),
-                ],
+          leading: AppIconButton(
+            key: const ValueKey('now-playing-minimize'),
+            tooltip: _minimizeTooltip(context),
+            color: overCover || mornye ? Colors.white : null,
+            icon: const AppIcon(Icons.keyboard_arrow_down),
+            onPressed: _minimize,
+          ),
+          actions: [
+            LinkDevicesButton(color: overCover ? Colors.white : null),
+            AppIconButton(
+              tooltip: context.l10n.nowPlayingUpNext,
+              color: overCover ? Colors.white : null,
+              icon: const AppIcon(Icons.queue_music),
+              onPressed: () => _showQueueSheet(context, colorScheme),
+            ),
+            AppIconButton(
+              color: overCover ? Colors.white : null,
+              tooltip: MaterialLocalizations.of(context).moreButtonTooltip,
+              icon: const AppIcon(Icons.more_vert),
+              onPressed: () => _showMoreActions(
+                context: context,
+                mediaItem: mediaItem,
+                source: source,
+                colorScheme: colorScheme,
+              ),
+            ),
+          ],
         ),
       ),
       body: FadeTransition(
@@ -547,7 +526,7 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
                           insetArtwork: !fullBleed,
                           artworkTopInset:
                               MediaQuery.paddingOf(context).top +
-                              (widget.embedded ? mornyeToolbarHeight! : 36),
+                              (widget.embedded ? mornyeToolbarHeight : 36),
                           artworkKeys: (
                             header: _artworkHeaderKey,
                             controls: _artworkControlsKey,
@@ -1128,6 +1107,11 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
               padding: const EdgeInsets.only(bottom: 16),
               child: SettingsGroup(
                 children: [
+                  SettingsItem(
+                    icon: Icons.waves,
+                    title: waveText(context, 'Волна по треку', 'Wave by track'),
+                    onTap: () => Navigator.of(sheetContext).pop('wave'),
+                  ),
                   if ((mediaItem.album ?? '').trim().isNotEmpty)
                     SettingsItem(
                       icon: Icons.album_outlined,
@@ -1195,6 +1179,14 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
           );
     if (!mounted || !context.mounted) return;
     switch (action) {
+      case 'wave':
+        await showAppBottomSheet<void>(
+          context: context,
+          useRootNavigator: true,
+          title: waveText(context, 'Волна по треку', 'Wave by track'),
+          builder: (_) => CurrentTrackWaveActions(item: mediaItem),
+        );
+        break;
       case 'favorite':
         await _updatePlayerCollection(mediaItem, favorite: true);
         break;

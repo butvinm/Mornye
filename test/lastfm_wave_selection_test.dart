@@ -2,149 +2,105 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mornye/models/settings.dart';
 import 'package:mornye/models/track.dart';
-import 'package:mornye/providers/settings_provider.dart';
-import 'package:mornye/providers/extension_provider.dart';
-import 'package:mornye/providers/playback_provider.dart';
-import 'package:mornye/providers/lastfm_wave_provider.dart';
-import 'package:mornye/services/lastfm_wave_resolver.dart';
-import 'package:mornye/services/lastfm_wave_service.dart';
-import 'package:mornye/widgets/lastfm_wave_card.dart';
+import 'package:mornye/providers/wave_session_provider.dart';
+import 'package:mornye/widgets/wave_controls.dart';
 
-class _Settings extends SettingsNotifier {
+class _Wave extends WaveSessionController {
+  _Wave(this.initial);
+  final WaveSessionState initial;
+  WaveContext? _selected;
+  int _starts = 0;
+  Completer<void>? _pending;
+  String? _currentItemId;
   @override
-  AppSettings build() =>
-      const AppSettings(playerMode: 'internal', searchProvider: 'deezer');
-}
-
-class _Extensions extends ExtensionNotifier {
+  WaveSessionState build() => initial;
   @override
-  ExtensionState build() => const ExtensionState(
-    extensions: [
-      Extension(
-        id: 'deezer',
-        name: 'deezer',
-        displayName: 'Deezer',
-        version: '1',
-        description: '',
-        enabled: true,
-        status: 'loaded',
-        searchBehavior: SearchBehavior(enabled: true),
-      ),
-    ],
-  );
-}
-
-class _Playback extends PlaybackController {
-  final batches = <List<Track>>[];
-  @override
-  Future<void> playTrackList(
-    List<Track> tracks, {
-    int startIndex = 0,
-    String origin = 'collection',
+  Future<void> start(
+    WaveContext context, {
+    bool preserveCurrent = false,
+    bool skipSeed = false,
+    String? currentItemId,
   }) async {
-    batches.add(tracks);
+    _selected = context;
+    _currentItemId = currentItemId;
+    _starts++;
+    if (_pending != null) await _pending!.future;
   }
 }
 
-const recommendations = [
-  LastfmWaveTrack(title: 'Duality', artist: 'Slipknot'),
-  LastfmWaveTrack(title: 'Система', artist: 'Егор Летов'),
-  LastfmWaveTrack(title: 'Freak on a Leash', artist: 'Korn'),
-];
-Track matched(LastfmWaveTrack r) => Track(
-  id: 'deezer:${r.title}',
-  source: 'deezer',
-  name: r.title,
-  artistName: r.artist,
-  albumName: '',
-  duration: 180,
-);
 void main() {
-  Future<ProviderContainer> show(
-    WidgetTester tester,
-    _Playback playback,
-    WaveTrackSearch search,
-  ) async {
-    final container = ProviderContainer(
-      overrides: [
-        settingsProvider.overrideWith(_Settings.new),
-        extensionProvider.overrideWith(_Extensions.new),
-        playbackProvider.overrideWith(() => playback),
-        lastfmWaveConfigurationProvider.overrideWith(
-          (ref) async => const LastfmWaveConfiguration(
-            username: 'listener',
-            apiKey: 'test',
-            tracks: recommendations,
+  const track = Track(
+    id: 'deezer:3819908',
+    name: 'Duality',
+    artistName: 'Slipknot',
+    albumName: 'Vol. 3',
+    duration: 252,
+    source: 'deezer',
+  );
+  const wave = WaveContext(
+    kind: WaveKind.track,
+    title: 'Duality',
+    artist: 'Slipknot',
+    track: track,
+  );
+
+  testWidgets(
+    'track wave action passes exact selected track identity to session',
+    (tester) async {
+      final controller = _Wave(const WaveSessionState(loaded: true));
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [waveSessionProvider.overrideWith(() => controller)],
+          child: const MaterialApp(
+            home: Scaffold(
+              body: WaveStartButton(wave: wave, currentItemId: 'playing-item'),
+            ),
           ),
         ),
-      ],
-    );
-    addTearDown(container.dispose);
+      );
+      await tester.tap(find.byType(FilledButton));
+      expect(controller._selected?.track, same(track));
+      expect(controller._selected?.kind, WaveKind.track);
+      expect(controller._currentItemId, 'playing-item');
+    },
+  );
+
+  testWidgets('pending wave action cannot create a second start request', (
+    tester,
+  ) async {
+    final controller = _Wave(const WaveSessionState(loaded: true))
+      .._pending = Completer<void>();
     await tester.pumpWidget(
-      UncontrolledProviderScope(
-        container: container,
-        child: MaterialApp(
-          home: Scaffold(
-            body: SingleChildScrollView(child: LastfmWaveCard(search: search)),
-          ),
+      ProviderScope(
+        overrides: [waveSessionProvider.overrideWith(() => controller)],
+        child: const MaterialApp(
+          home: Scaffold(body: WaveStartButton(wave: wave)),
         ),
       ),
     );
+    await tester.tap(find.byType(FilledButton));
+    await tester.pump();
+    await tester.tap(find.byType(FilledButton));
+    expect(controller._starts, 1);
+    controller._pending!.complete();
     await tester.pumpAndSettle();
-    return container;
-  }
+  });
 
-  testWidgets('unmatched selected row never starts matching following song', (
-    tester,
-  ) async {
-    final playback = _Playback();
-    final requests = <String>[];
-    await show(tester, playback, (r) async {
-      requests.add(r.title);
-      return r.title == 'Duality' ? [] : [matched(r)];
-    });
-    await tester.tap(find.text('Duality'));
-    await tester.pumpAndSettle();
-    expect(requests, ['Duality']);
-    expect(playback.batches, isEmpty);
-    expect(find.textContaining('Slipknot — Duality'), findsOneWidget);
-    await tester.tap(find.text('Система'));
-    await tester.pumpAndSettle();
-    expect(playback.batches.single.single.id, 'deezer:Система');
-    expect(playback.batches.single.single.artistName, 'Егор Летов');
-  });
-  testWidgets('batch Play can still skip unavailable recommendations', (
-    tester,
-  ) async {
-    final playback = _Playback();
-    await show(
-      tester,
-      playback,
-      (r) async => r.title == 'Duality' ? [] : [matched(r)],
-    );
-    await tester.tap(find.text('Play'));
-    await tester.pumpAndSettle();
-    expect(playback.batches.single.map((t) => t.name), [
-      'Система',
-      'Freak on a Leash',
-    ]);
-  });
-  testWidgets('configuration replacement invalidates pending row search', (
-    tester,
-  ) async {
-    final playback = _Playback();
-    final pending = Completer<List<Track>>();
-    final container = await show(tester, playback, (_) => pending.future);
-    await tester.tap(find.text('Duality'));
-    await tester.pump();
-    container.invalidate(lastfmWaveConfigurationProvider);
-    await tester.pump();
-    await tester.pump();
-    pending.complete([matched(recommendations.first)]);
-    await tester.pumpAndSettle();
-    expect(playback.batches, isEmpty);
-    expect(find.byType(LinearProgressIndicator), findsNothing);
-  });
+  testWidgets(
+    'player heading identifies wave seed separately from song metadata',
+    (tester) async {
+      final controller = _Wave(
+        const WaveSessionState(loaded: true, active: true, context: wave),
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [waveSessionProvider.overrideWith(() => controller)],
+          child: const MaterialApp(home: Scaffold(body: WavePlayerHeading())),
+        ),
+      );
+      expect(find.text('Wave by track'), findsOneWidget);
+      expect(find.text('Duality'), findsOneWidget);
+    },
+  );
 }

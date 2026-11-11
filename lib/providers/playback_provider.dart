@@ -285,10 +285,15 @@ class PlaybackController extends Notifier<PlaybackState> {
 
   /// Public wrapper so non-playback features (e.g. M3U export) reuse the
   /// same library+history file resolution.
-  Future<List<String?>> resolveTrackFilePaths(List<Track> tracks) =>
-      _resolveTrackPaths(tracks);
+  Future<List<String?>> resolveTrackFilePaths(
+    List<Track> tracks, {
+    bool strictRecording = false,
+  }) => _resolveTrackPaths(tracks, strictRecording: strictRecording);
 
-  Future<List<String?>> _resolveTrackPaths(List<Track> tracks) async {
+  Future<List<String?>> _resolveTrackPaths(
+    List<Track> tracks, {
+    bool strictRecording = false,
+  }) async {
     if (tracks.isEmpty) return const [];
     final recovery = DownloadFileRecovery(history: _history);
     final (:paths, :missingHistoryIds) = await resolveTrackFiles(
@@ -296,6 +301,7 @@ class PlaybackController extends Notifier<PlaybackState> {
       library: _library,
       history: _history,
       includeLocal: ref.read(settingsProvider).localLibraryEnabled,
+      strictRecording: strictRecording,
       recoverDownload: (source, id) => recovery.recover(
         source,
         historyId: id,

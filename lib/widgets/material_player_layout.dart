@@ -1,3 +1,4 @@
+import 'package:mornye/widgets/wave_controls.dart';
 import 'dart:math' as math;
 
 import 'package:audio_service/audio_service.dart';
@@ -256,7 +257,7 @@ class MaterialPlayerLayout extends StatelessWidget {
           );
         }
 
-        return Padding(
+        final player = Padding(
           padding: const EdgeInsets.only(bottom: 8),
           child: Column(
             children: [
@@ -301,6 +302,15 @@ class MaterialPlayerLayout extends StatelessWidget {
                     ),
                   ),
                 ),
+            ],
+          ),
+        );
+        return SingleChildScrollView(
+          physics: showLyrics ? const NeverScrollableScrollPhysics() : null,
+          child: Column(
+            children: [
+              SizedBox(height: constraints.maxHeight, child: player),
+              CurrentTrackWaveActions(item: mediaItem),
             ],
           ),
         );

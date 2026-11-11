@@ -1,3 +1,5 @@
+import 'package:mornye/widgets/wave_controls.dart';
+import 'package:mornye/providers/wave_session_provider.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -670,6 +672,15 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen>
                     colorScheme,
                     albums: albums,
                     hasDiscography: hasDiscography,
+                  ),
+                  SliverToBoxAdapter(
+                    child: WaveStartButton(
+                      wave: WaveContext(
+                        kind: WaveKind.artist,
+                        title: widget.artistName,
+                        artist: widget.artistName,
+                      ),
+                    ),
                   ),
                   // Desktop keeps the sections in the header's column.
                   SliverPadding(

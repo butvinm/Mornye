@@ -10,7 +10,10 @@ ROOT = Path(__file__).resolve().parents[1]
 # Explicit test lists keep selection reviewable; this is not automatic coverage.
 TESTS = {
     "lastfm": [
-        "lastfm_wave_service", "lastfm_wave_provider", "lastfm_wave_resolver",
+        "lastfm_wave_service", "lastfm_wave_resolver",
+        "lastfm_account_service", "lastfm_account_controller",
+        "lastfm_account_provider", "wave_session_controller", "wave_session_startup",
+        "wave_listening_observer", "wave_audio_cache", "playable_wave_metadata",
         "lastfm_wave_card", "lastfm_wave_selection", "home_search_tabs",
     ],
     "playback": [
@@ -23,7 +26,15 @@ TESTS = {
 SOURCES = {
     "lastfm": ["lib/services/lastfm_wave_service.dart",
                "lib/services/lastfm_wave_resolver.dart",
-               "lib/providers/lastfm_wave_provider.dart",
+               "lib/providers/lastfm_account_provider.dart",
+               "lib/providers/wave_session_provider.dart",
+               "lib/models/wave_session.dart",
+               "lib/services/lastfm_account_service.dart",
+               "lib/services/lastfm_account_controller.dart",
+               "lib/services/wave_audio_cache.dart",
+               "lib/services/wave_listening_observer.dart",
+               "lib/widgets/lastfm_account_sheet.dart",
+               "lib/widgets/wave_controls.dart",
                "lib/widgets/lastfm_wave_card.dart"],
     "playback": ["lib/services/download_playback.dart",
                  "lib/providers/download_playback_provider.dart",

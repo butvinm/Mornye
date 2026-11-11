@@ -3,7 +3,7 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:audio_service/audio_service.dart';
-import 'package:flutter/foundation.dart' show compute, visibleForTesting;
+import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/widgets.dart'
     show AppLifecycleState, WidgetsBinding, WidgetsBindingObserver;
 import 'package:mornye/services/playback_notification.dart';
@@ -1343,6 +1343,7 @@ class MusicPlayerHandler extends BaseAudioHandler
         ..clear()
         ..addAll(items.map(_toMediaItem));
       _index = index.clamp(0, items.length - 1);
+      externalQueueActive = _media[_index].waveSessionKey != null;
       _shuffle = shuffle;
       _originalQueueOrder = null;
       if (shuffle) {
@@ -1394,13 +1395,59 @@ class MusicPlayerHandler extends BaseAudioHandler
         _media[_index].source == media.source;
   }
 
+  bool externalQueueActive = false;
+  void Function(PlayableMedia media)? onExplicitNext;
+
+  /// Changes recommendations after the current song without touching its deck.
+  Future<void> replaceUpcoming(
+    List<PlayableMedia> items, {
+    String? waveSessionKey,
+  }) async {
+    if (_disposed || _index < 0 || _index >= _media.length) return;
+    await _cancelTransitions();
+    if (_disposed || _index < 0 || _index >= _media.length) return;
+    if (waveSessionKey != null) {
+      _media[_index] = _media[_index].withWaveSession(waveSessionKey);
+      externalQueueActive = _media[_index].waveSessionKey != null;
+      final current = mediaItem.value ?? _queueItems[_index];
+      final updated = current.copyWith(
+        extras: {
+          ...?current.extras,
+          'waveSessionKey': _media[_index].waveSessionKey,
+        },
+      );
+      _queueItems[_index] = updated;
+      mediaItem.add(updated);
+    }
+    _media.removeRange(_index + 1, _media.length);
+    _queueItems.removeRange(_index + 1, _queueItems.length);
+    _media.addAll(items);
+    _queueItems.addAll(items.map(_toMediaItem));
+    _originalQueueOrder = null;
+    _shuffle = false;
+    _repeatMode = AudioServiceRepeatMode.none;
+    _playHistory.removeWhere((i) => i > _index);
+    _markSessionQueueChanged();
+    queue.add(List<MediaItem>.unmodifiable(_queueItems));
+    _broadcastState();
+    await _persistSession(position: await _currentPositionForPersist());
+  }
+
   Future<void> setQueueAndPlay(
     List<PlayableMedia> items, {
     int initialIndex = 0,
     Duration initialPosition = Duration.zero,
     bool? shuffle,
+    bool externalQueue = false,
   }) async {
     if (items.isEmpty) return;
+    if (!externalQueue) {
+      items = [
+        for (final item in items)
+          item.waveSessionKey == null ? item : item.withWaveSession(''),
+      ];
+    }
+    externalQueueActive = externalQueue;
     _autoplay.reset();
     _playRequestGeneration++;
     _media
@@ -2309,6 +2356,11 @@ class MusicPlayerHandler extends BaseAudioHandler
 
   @override
   Future<void> skipToNext() async {
+    if (_index >= 0 &&
+        _index < _media.length &&
+        playbackState.value.processingState == AudioProcessingState.ready) {
+      onExplicitNext?.call(_media[_index]);
+    }
     if (_index >= 0 && _index == _media.length - 1) {
       final generation = _playRequestGeneration;
       await _autoplay.fill();

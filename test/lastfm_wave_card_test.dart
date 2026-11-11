@@ -1,246 +1,178 @@
-import 'dart:convert';
-import 'dart:async';
-import 'package:http/http.dart' as http;
-import 'package:http/testing.dart';
-import 'package:mornye/services/lastfm_wave_service.dart';
-import 'package:mornye/providers/lastfm_wave_provider.dart';
-import 'package:mornye/theme/mornye_theme.dart';
+import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:mornye/providers/lastfm_account_provider.dart';
+import 'package:mornye/providers/music_player_provider.dart';
+import 'package:mornye/providers/wave_session_provider.dart';
 import 'package:mornye/widgets/lastfm_wave_card.dart';
+import 'package:mornye/services/shell_navigation_service.dart';
+
+class _Wave extends WaveSessionController {
+  _Wave(this.initial);
+  final WaveSessionState initial;
+  int _toggles = 0;
+  @override
+  WaveSessionState build() => initial;
+  @override
+  Future<void> toggle() async {
+    _toggles++;
+  }
+}
+
+class _EmptyMedia extends CurrentMediaItemNotifier {
+  @override
+  Stream<MediaItem?> build() => Stream.value(null);
+}
+
+Future<void> _pump(
+  WidgetTester tester,
+  _Wave wave, {
+  bool connected = true,
+  bool needsReauthentication = false,
+  double scale = 1,
+}) async {
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        waveSessionProvider.overrideWith(() => wave),
+        lastfmAccountStateProvider.overrideWith(
+          (ref) => Stream.value(
+            LastfmAccountState(
+              appConfigured: true,
+              connected: connected,
+              needsReauthentication: needsReauthentication,
+            ),
+          ),
+        ),
+        currentMediaItemProvider.overrideWith(_EmptyMedia.new),
+        playbackPlayingProvider.overrideWith((ref) => false),
+        playbackLoadingProvider.overrideWith((ref) => false),
+      ],
+      child: MaterialApp(
+        home: Scaffold(
+          body: MediaQuery(
+            data: MediaQueryData(
+              size: const Size(360, 640),
+              textScaler: TextScaler.linear(scale),
+            ),
+            child: const SingleChildScrollView(child: LastfmWaveCard()),
+          ),
+        ),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
 
 void main() {
-  testWidgets('API error is not empty history and refresh recovers', (
+  testWidgets('expired account offers sign-in without hiding playback', (
     tester,
   ) async {
-    var reject = true;
-    final service = LastfmWaveService(
-      client: MockClient(
-        (_) async => reject
-            ? http.Response('{"error":10,"message":"secret"}', 403)
-            : http.Response('{"toptracks":{"track":[]}}', 200),
-      ),
+    await _pump(
+      tester,
+      _Wave(const WaveSessionState(loaded: true, active: true)),
+      needsReauthentication: true,
     );
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          lastfmWaveConfigurationProvider.overrideWith(
-            (ref) async => const LastfmWaveConfiguration(
-              username: 'listener',
-              apiKey: 'secret',
-            ),
-          ),
-        ],
-        child: MaterialApp(
-          home: Scaffold(
-            body: SingleChildScrollView(
-              child: LastfmWaveCard(service: service),
-            ),
-          ),
-        ),
-      ),
+    expect(
+      find.text('Sign in to Last.fm again — music keeps playing'),
+      findsOneWidget,
     );
-    await tester.pumpAndSettle();
-    expect(find.text('Copy diagnostics'), findsOneWidget);
-    expect(find.textContaining('http=403 api=10'), findsOneWidget);
-    expect(find.textContaining('has no listening history'), findsNothing);
-    expect(find.text('secret'), findsNothing);
-    reject = false;
-    await tester.tap(find.text('Refresh'));
-    await tester.pumpAndSettle();
-    expect(find.text('Copy diagnostics'), findsNothing);
-    expect(find.textContaining('has no listening history'), findsOneWidget);
+    expect(find.byIcon(Icons.play_arrow_rounded), findsOneWidget);
   });
 
-  setUp(() {
-    SharedPreferences.setMockInitialValues({});
-  });
-  Future<void> showCard(WidgetTester tester) async {
-    await tester.pumpWidget(
-      const ProviderScope(
-        child: MaterialApp(
-          home: Scaffold(body: SingleChildScrollView(child: LastfmWaveCard())),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-  }
-
-  testWidgets('unconfigured Home offers setup without requesting audio', (
-    tester,
-  ) async {
-    const channel = MethodChannel(
-      'plugins.it_nomads.com/flutter_secure_storage',
-    );
-    final messenger =
-        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
-    var secureReads = 0;
-    messenger.setMockMethodCallHandler(channel, (call) async {
-      if (call.method == 'read') secureReads++;
-      return null;
-    });
-    addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
-    await showCard(tester);
-    expect(secureReads, 0);
-    // An unconfigured Home must not wait on the keychain or leave a loader.
-    expect(find.byType(LinearProgressIndicator), findsNothing);
-    expect(find.text('My wave'), findsOneWidget);
-    expect(find.text('Connect Last.fm'), findsOneWidget);
-    await tester.tap(find.text('Connect Last.fm'));
-    await tester.pumpAndSettle();
-    expect(find.text('Username'), findsOneWidget);
-    expect(find.text('Last.fm API key'), findsOneWidget);
-    expect(find.text('Get an API key'), findsOneWidget);
-    await tester.tap(find.text('Save'));
-    await tester.pumpAndSettle();
-    expect(find.text('Enter a username'), findsOneWidget);
-    await tester.tap(find.text('Cancel'));
-    await tester.pumpAndSettle();
-    expect(tester.takeException(), isNull);
-  });
   testWidgets(
-    'fresh profile cache displays playable recommendations without API key exposure',
+    'personal wave starts with one play action and has no batch controls',
     (tester) async {
-      FlutterSecureStorage.setMockInitialValues({
-        'lastfm_wave_api_key': 'a' * 32,
-      });
-      SharedPreferences.setMockInitialValues({
-        'lastfm_wave_username': 'listener',
-        'lastfm_wave_cache_v1': jsonEncode({
-          'username': 'listener',
-          'created': DateTime.now().toIso8601String(),
-          'tracks': [
-            {'title': 'Get Lucky', 'artist': 'Daft Punk'},
-          ],
-        }),
-      });
-      await showCard(tester);
-      expect(find.text('Get Lucky'), findsOneWidget);
-      expect(find.text('Daft Punk'), findsOneWidget);
-      expect(find.text('Play'), findsOneWidget);
-      expect(find.text('a' * 32), findsNothing);
+      final wave = _Wave(
+        const WaveSessionState(loaded: true, seedArtists: ['Slipknot']),
+      );
+      await _pump(tester, wave);
+      expect(find.text('My wave'), findsOneWidget);
+      expect(find.text('Refresh'), findsNothing);
+      expect(find.text('More tracks'), findsNothing);
+      await tester.tap(find.byIcon(Icons.play_arrow_rounded));
+      expect(wave._toggles, 1);
+    },
+  );
+
+  testWidgets(
+    'first use offers account or artist choice without credential fields',
+    (tester) async {
+      await _pump(
+        tester,
+        _Wave(const WaveSessionState(loaded: true)),
+        connected: false,
+      );
+      expect(find.text('Connect Last.fm'), findsOneWidget);
+      expect(find.text('Choose artists'), findsOneWidget);
+      expect(find.text('Last.fm API key'), findsNothing);
+      expect(find.byType(TextField), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'context remains visible and long titles fit increased text size',
+    (tester) async {
+      tester.view.physicalSize = const Size(360, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      const title = 'Очень длинное название альбома для проверки доступности';
+      await _pump(
+        tester,
+        _Wave(
+          const WaveSessionState(
+            loaded: true,
+            active: true,
+            context: WaveContext(kind: WaveKind.album, title: title),
+          ),
+        ),
+        scale: 1.6,
+      );
+      expect(find.text('Wave by album'), findsOneWidget);
+      expect(find.byTooltip('Return to my wave'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
-  testWidgets('More tracks exposes later recommendations without downloading', (
+  testWidgets('empty connected profile offers artist selection', (
     tester,
   ) async {
-    FlutterSecureStorage.setMockInitialValues({
-      'lastfm_wave_api_key': 'a' * 32,
-    });
-    SharedPreferences.setMockInitialValues({
-      'lastfm_wave_username': 'listener',
-      'lastfm_wave_cache_v1': jsonEncode({
-        'username': 'listener',
-        'created': DateTime.now().toIso8601String(),
-        'tracks': List.generate(
-          12,
-          (i) => {'title': 'Song $i', 'artist': 'Artist'},
-        ),
-      }),
-    });
-    await showCard(tester);
-    expect(find.text('Song 0'), findsOneWidget);
-    expect(find.text('Song 5'), findsNothing);
-    await tester.ensureVisible(find.text('More tracks'));
-    await tester.tap(find.text('More tracks'));
-    await tester.pumpAndSettle();
-    expect(find.text('Song 0'), findsNothing);
-    expect(find.text('Song 5'), findsOneWidget);
-    await tester.tap(find.text('More tracks'));
-    await tester.pumpAndSettle();
-    expect(find.text('Song 10'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-  });
-  for (final fail in [false, true]) {
-    testWidgets(
-      'Mornye Home remains usable after async configuration (error: $fail)',
-      (tester) async {
-        final configuration = Completer<LastfmWaveConfiguration>();
-        await tester.pumpWidget(
-          ProviderScope(
-            overrides: [
-              lastfmWaveConfigurationProvider.overrideWith(
-                (ref) => configuration.future,
-              ),
-            ],
-            child: MaterialApp(
-              theme: MornyeTheme.build(Brightness.dark),
-              home: const Scaffold(body: LastfmWaveCard()),
-            ),
-          ),
-        );
-        expect(find.byType(LinearProgressIndicator), findsNothing);
-        if (fail) {
-          configuration.completeError(StateError('keychain unavailable'));
-        } else {
-          configuration.complete(const LastfmWaveConfiguration());
-        }
-        await tester.pumpAndSettle();
-        expect(find.text('Connect Last.fm'), findsOneWidget);
-        if (fail) {
-          expect(find.text('Could not read Last.fm settings.'), findsOneWidget);
-        }
-        await tester.tap(find.text('Connect Last.fm'));
-        await tester.pumpAndSettle();
-        expect(find.text('Username'), findsOneWidget);
-        await tester.tap(find.text('Cancel'));
-        await tester.pumpAndSettle();
-        expect(tester.takeException(), isNull);
-      },
+    await _pump(
+      tester,
+      _Wave(const WaveSessionState(loaded: true, needsSeeds: true)),
     );
-  }
+    expect(find.text('Choose artists'), findsOneWidget);
+    expect(find.text('Connect Last.fm'), findsNothing);
+  });
+
   testWidgets(
-    'Mornye refresh can disable and re-enable controls after a request',
+    'unavailable selected track offers explicit similar music action',
     (tester) async {
-      final response = Completer<http.Response>();
-      final service = LastfmWaveService(
-        client: MockClient((request) => response.future),
-      );
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            lastfmWaveConfigurationProvider.overrideWith(
-              (ref) async => const LastfmWaveConfiguration(
-                username: 'listener',
-                apiKey: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-                tracks: [LastfmWaveTrack(title: 'Song', artist: 'Artist')],
-              ),
-            ),
-          ],
-          child: MaterialApp(
-            theme: MornyeTheme.build(Brightness.dark),
-            home: Scaffold(
-              body: SingleChildScrollView(
-                child: LastfmWaveCard(service: service),
-              ),
-            ),
+      await _pump(
+        tester,
+        _Wave(
+          const WaveSessionState(
+            loaded: true,
+            seedUnavailable: true,
+            error: 'Selected song is unavailable',
           ),
         ),
       );
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Refresh'));
-      await tester.pump();
-      expect(find.byType(LinearProgressIndicator), findsOneWidget);
-      response.complete(http.Response('{"toptracks":{"track":[]}}', 200));
-      await tester.pumpAndSettle();
-      expect(find.byType(LinearProgressIndicator), findsNothing);
-      expect(
-        find.text(
-          'Your Last.fm profile has no listening history. Scrobble tracks to Last.fm first; your local Mornye library does not add them automatically.',
-        ),
-        findsOneWidget,
+      expect(find.text('Play similar music'), findsOneWidget);
+      expect(find.text('Selected song is unavailable'), findsOneWidget);
+      final owner = Object();
+      ShellTab? selected;
+      ShellNavigationService.registerTabSelectionHandler(
+        owner: owner,
+        handler: (tab) => selected = tab,
       );
-      await tester.tap(find.byTooltip('Set up Last.fm'));
-      await tester.pumpAndSettle();
-      expect(find.text('Username'), findsOneWidget);
-      await tester.tap(find.text('Cancel'));
-      await tester.pumpAndSettle();
-      expect(tester.takeException(), isNull);
+      addTearDown(
+        () => ShellNavigationService.unregisterTabSelectionHandler(owner),
+      );
+      await tester.ensureVisible(find.text('Open Library'));
+      await tester.tap(find.text('Open Library'));
+      expect(selected, ShellTab.library);
     },
   );
 }

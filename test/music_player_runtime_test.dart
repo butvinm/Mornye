@@ -664,6 +664,52 @@ const _track = PlayableMedia(
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  for (final paused in [false, true]) {
+    test(
+      'wave changes upcoming songs without restarting current paused=$paused',
+      () async {
+        final decks = <_Deck>[];
+        final handler = await _runtime(decks: decks).initialize();
+        await handler.setQueueAndPlay([
+          _track,
+          const PlayableMedia(
+            id: 'old',
+            source: '/old.flac',
+            title: 'Old',
+            artist: 'Artist',
+          ),
+        ]);
+        await handler.seek(const Duration(seconds: 34));
+        if (paused) await handler.pause();
+        final sources = List.of(decks.first.sources);
+        handler.mediaItem.add(
+          handler.mediaItem.value!.copyWith(
+            duration: const Duration(seconds: 90),
+          ),
+        );
+        await handler.replaceUpcoming([
+          const PlayableMedia(
+            id: 'new',
+            source: '/new.flac',
+            title: 'New',
+            artist: 'Another',
+          ),
+        ], waveSessionKey: 'track:Artist:One');
+        expect(handler.externalQueueActive, isTrue);
+        expect(
+          handler.mediaItem.value!.extras?['waveSessionKey'],
+          'track:Artist:One',
+        );
+        expect(handler.mediaItem.value!.duration, const Duration(seconds: 90));
+        expect(handler.queue.value.map((i) => i.id), ['one', 'new']);
+        expect(handler.mediaItem.value!.id, 'one');
+        expect(decks.first.sources, sources);
+        expect(decks.first.position, const Duration(seconds: 34));
+        expect(handler.playbackState.value.playing, !paused);
+      },
+    );
+  }
+
   test(
     'Android updates every queued copy before playing a moved download',
     () async {
@@ -1466,6 +1512,45 @@ void main() {
       expect(handler.mediaItem.value?.id, 'one');
     },
   );
+
+  for (final wave in [false, true]) {
+    test('runtime restart restores queue ownership wave=$wave', () async {
+      final directory = await Directory.systemTemp.createTemp('wave-restore-');
+      addTearDown(() => directory.delete(recursive: true));
+      final file = await File(
+        '${directory.path}/song.flac',
+      ).writeAsString('audio');
+      final plain = PlayableMedia(
+        id: 'cached',
+        source: file.path,
+        title: 'Duality',
+        artist: 'Slipknot',
+      );
+      final media = wave
+          ? plain.withWaveSession('artist:Slipknot:Slipknot')
+          : plain;
+      final store = _ResumeSessionStore();
+      final first = _runtime(sessionDatabase: store);
+      final handler = await first.initialize();
+      await handler.setQueueAndPlay([media], externalQueue: wave);
+      await handler.pause();
+      await handler.persistCurrentSession();
+      final decks = <_Deck>[];
+      final fresh = _runtime(sessionDatabase: store, decks: decks);
+      await fresh.restoreSession();
+      final restored = fresh.handler!;
+      expect(restored.externalQueueActive, wave);
+      expect(
+        restored.mediaItem.value!.extras?['waveSessionKey'],
+        wave ? 'artist:Slipknot:Slipknot' : null,
+      );
+      expect(restored.playbackState.value.playing, isFalse);
+      expect(decks.single.sources, isEmpty);
+      await restored.setQueueAndPlay([media]);
+      expect(restored.externalQueueActive, isFalse);
+      expect(restored.mediaItem.value!.extras?['waveSessionKey'], isNull);
+    });
+  }
 
   test(
     'initializing and restoring a paused session does not request audio focus',

@@ -227,6 +227,98 @@ class LastfmWaveService {
     return List.unmodifiable(result);
   }
 
+  Future<List<LastfmWaveTrack>> profileTracks(
+    String apiKey,
+    String username, {
+    bool loved = false,
+  }) async => _tracks(
+    await _request(apiKey, {
+      'method': loved ? 'user.getLovedTracks' : 'user.getTopTracks',
+      'user': username,
+      'limit': '100',
+      if (!loved) 'period': 'overall',
+    }),
+    loved ? 'lovedtracks' : 'toptracks',
+  );
+
+  Future<List<LastfmWaveTrack>> similarTracks(
+    String apiKey,
+    LastfmWaveTrack track,
+  ) async => _tracks(
+    await _request(apiKey, {
+      'method': 'track.getSimilar',
+      'artist': track.artist,
+      'track': track.title,
+      'autocorrect': '1',
+      'limit': '50',
+    }),
+    'similartracks',
+  );
+
+  Future<List<LastfmWaveTrack>> artistTracks(
+    String apiKey,
+    String artist,
+  ) async => _tracks(
+    await _request(apiKey, {
+      'method': 'artist.getTopTracks',
+      'artist': artist,
+      'autocorrect': '1',
+      'limit': '30',
+    }),
+    'toptracks',
+  );
+
+  Future<List<String>> similarArtists(String apiKey, String artist) async {
+    final data = await _request(apiKey, {
+      'method': 'artist.getSimilar',
+      'artist': artist,
+      'autocorrect': '1',
+      'limit': '8',
+    });
+    final group = data['similarartists'];
+    final raw = group is Map<String, dynamic> ? group['artist'] : null;
+    if (raw is! List) return [];
+    return raw
+        .whereType<Map<String, dynamic>>()
+        .map((e) => e['name'])
+        .whereType<String>()
+        .where((s) => s.trim().isNotEmpty)
+        .toList();
+  }
+
+  Future<List<String>> searchArtists(String apiKey, String query) async {
+    final data = await _request(apiKey, {
+      'method': 'artist.search',
+      'artist': query,
+      'limit': '12',
+    });
+    final results = data['results'];
+    final group = results is Map<String, dynamic>
+        ? results['artistmatches']
+        : null;
+    final raw = group is Map<String, dynamic> ? group['artist'] : null;
+    if (raw is! List) return [];
+    return raw
+        .whereType<Map<String, dynamic>>()
+        .map((e) => e['name'])
+        .whereType<String>()
+        .toList();
+  }
+
+  Future<List<LastfmWaveTrack>> genreTracks(
+    String apiKey,
+    String genre, {
+    int page = 1,
+  }) async => _tracks(
+    await _request(apiKey, {
+      'method': 'tag.getTopTracks',
+      'tag': genre,
+      'limit': '50',
+      'page': '$page',
+    }),
+    'tracks',
+  );
+
   Future<Map<String, dynamic>> _request(
     String apiKey,
     Map<String, String> parameters,
@@ -240,7 +332,10 @@ class LastfmWaveService {
               'api_key': apiKey,
               'format': 'json',
             }),
-            headers: const {'Accept': 'application/json'},
+            headers: const {
+              'Accept': 'application/json',
+              'User-Agent': 'Mornye/5.3 LastfmWave',
+            },
           )
           .timeout(const Duration(seconds: 12));
       Map<String, dynamic>? data;

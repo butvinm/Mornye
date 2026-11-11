@@ -30,7 +30,6 @@ AutoplayLearningTrack _learningTrack(PlayableMedia media) =>
 /// can be reached. A few songs by the seed's artist join small pages spread
 /// across the Library: one large page in date-added order holds whole
 /// albums, so it offered mostly one artist.
-@visibleForTesting
 Future<List<PlayableMedia>> loadAutoplayLibrary(
   PlayableMedia seed,
   MusicPlayerRuntime runtime,
@@ -444,6 +443,7 @@ class _MusicAutoplay {
     final index = handler._index;
     final media = handler._media;
     return enabled &&
+        !handler.externalQueueActive &&
         !handler._disposed &&
         index >= 0 &&
         index < media.length &&
@@ -454,6 +454,7 @@ class _MusicAutoplay {
 
   Future<void> fill() async {
     if (!enabled ||
+        handler.externalQueueActive ||
         handler._disposed ||
         handler._index < 0 ||
         handler._index >= handler._media.length) {
@@ -508,6 +509,7 @@ class _MusicAutoplay {
       final candidates = await loadLibrary(seed);
       final signals = await _loadSignals(candidates);
       if (!enabled ||
+          handler.externalQueueActive ||
           handler._disposed ||
           generation != _generation ||
           handler._index < 0) {
@@ -571,6 +573,7 @@ class _MusicAutoplay {
       }
       // The worker must not publish suggestions for an obsolete queue/seed.
       if (!enabled ||
+          handler.externalQueueActive ||
           handler._disposed ||
           generation != _generation ||
           revision != handler._sessionQueueRevision ||

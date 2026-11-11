@@ -68,6 +68,12 @@ void main() {
     await tester.pump();
     await tester.pump();
 
+    await tester.scrollUntilVisible(
+      find.text('Saved song'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+
     final card = find.ancestor(
       of: find.text('Saved song'),
       matching: find.byType(InkWell),

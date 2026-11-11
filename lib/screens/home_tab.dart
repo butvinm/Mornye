@@ -963,16 +963,17 @@ class _HomeTabState extends ConsumerState<HomeTab>
               if (searchToolbar)
                 _buildDesktopSearchToolbarSliver()
               else
-                _buildHeaderSliver(greeting: greeting),
+                _buildHeaderSliver(greeting: _showsHome ? null : greeting),
               if (_showsHome) const SliverToBoxAdapter(child: AppCrashBanner()),
-              _buildHomeIntroSliver(
-                sectionMotion: sectionMotion,
-                hasResults: hasResults,
-                showExplore: showFeedSurface,
-                colorScheme: colorScheme,
-                screenHeight: screenHeight,
-                showEmptyHomeState: showEmptyHomeState,
-              ),
+              if (!_showsHome || hasSearchInput || hasResults)
+                _buildHomeIntroSliver(
+                  sectionMotion: sectionMotion,
+                  hasResults: hasResults,
+                  showExplore: showFeedSurface,
+                  colorScheme: colorScheme,
+                  screenHeight: screenHeight,
+                  showEmptyHomeState: showEmptyHomeState,
+                ),
               if (showSearchBar && !searchToolbar)
                 _buildSearchBarSliver(
                   hasResults: hasResults,

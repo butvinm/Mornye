@@ -21,6 +21,7 @@ import 'package:mornye/widgets/cached_cover_image.dart';
 import 'package:mornye/widgets/desktop/desktop_downloads_button.dart';
 import 'package:mornye/widgets/desktop/desktop_player_bar.dart';
 import 'package:mornye/widgets/mini_player.dart';
+import 'package:mornye/widgets/player_metadata_title.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Hands out cover schemes without decoding images: [cached] answers a peek
@@ -329,7 +330,11 @@ void main() {
             .first,
       );
       expect(scaffold.backgroundColor, cover.surface);
-      expect(Theme.of(tester.element(find.text('Song'))).colorScheme, cover);
+      final songTitle = find.descendant(
+        of: find.byType(PlayerMetadataTitle),
+        matching: find.text('Song'),
+      );
+      expect(Theme.of(tester.element(songTitle)).colorScheme, cover);
     });
 
     for (final (name, home) in [

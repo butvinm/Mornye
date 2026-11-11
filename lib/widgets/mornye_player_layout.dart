@@ -1,3 +1,4 @@
+import 'package:mornye/widgets/wave_controls.dart';
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
@@ -457,12 +458,20 @@ class MornyePlayerLayout extends ConsumerWidget {
         // Controls keep their intrinsic height. Small portrait screens and
         // large accessibility text can scroll instead of clipping the volume.
         final minHeight = 480.0 + (scale - 1).clamp(0, 3) * 120;
-        if (constraints.maxHeight < minHeight) {
-          return SingleChildScrollView(
-            child: SizedBox(height: minHeight, child: content()),
-          );
-        }
-        return RepaintBoundary(child: content());
+        return SingleChildScrollView(
+          physics: compactStage ? const NeverScrollableScrollPhysics() : null,
+          child: Column(
+            children: [
+              SizedBox(
+                height: constraints.maxHeight < minHeight
+                    ? minHeight
+                    : constraints.maxHeight,
+                child: RepaintBoundary(child: content()),
+              ),
+              CurrentTrackWaveActions(item: mediaItem),
+            ],
+          ),
+        );
       },
     );
     return PlayerTrackSwipe(

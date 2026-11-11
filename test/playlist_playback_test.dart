@@ -74,7 +74,10 @@ class _Playback extends PlaybackController {
   };
 
   @override
-  Future<List<String?>> resolveTrackFilePaths(List<Track> tracks) async {
+  Future<List<String?>> resolveTrackFilePaths(
+    List<Track> tracks, {
+    bool strictRecording = false,
+  }) async {
     resolvedRequests.add(tracks.map((track) => track.id).toList());
     return [for (final track in tracks) paths[track.id]];
   }

@@ -176,9 +176,11 @@ def main():
     # Cargo checks the current source even when Gradle considers native outputs cached.
     run('native', ['bash', 'scripts/build_rust_backend.sh', 'android'])
     clean_packaging(ROOT)
+    private_defines = env.get('MORNYE_LASTFM_CONFIG_FILE')
+    extra_defines = [f'--dart-define-from-file={private_defines}'] if private_defines else []
     run('apk', [str(flutter), 'build', 'apk', '--debug', '--target-platform', 'android-arm64',
                 '--split-per-abi', f'--dart-define=MORNYE_DIAGNOSTIC_BUILD={marker}',
-                f'--dart-define=GIT_COMMIT={commit}'])
+                f'--dart-define=GIT_COMMIT={commit}', *extra_defines])
     clean_source(ROOT, commit)
     apk = ROOT / GENERATED[-1]
     native = ROOT / 'build/app/intermediates/stripped_native_libs/debug/stripDebugDebugSymbols/out/lib/arm64-v8a/libmornye_mobile.so'

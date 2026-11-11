@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:mornye/providers/lastfm_wave_provider.dart';
+import 'package:mornye/providers/wave_session_provider.dart';
+import 'package:mornye/providers/lastfm_account_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mornye/l10n/app_localizations.dart';
@@ -343,8 +344,9 @@ Future<void> _pumpHome(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        lastfmWaveConfigurationProvider.overrideWith(
-          (ref) async => const LastfmWaveConfiguration(),
+        waveSessionProvider.overrideWith(_IdleWave.new),
+        lastfmAccountStateProvider.overrideWith(
+          (ref) => Stream.value(const LastfmAccountState(appConfigured: true)),
         ),
         settingsProvider.overrideWith(
           () => FixedSettingsNotifier(
@@ -418,4 +420,9 @@ class _History extends DownloadHistoryNotifier {
 class _Recent extends RecentAccessNotifier {
   @override
   RecentAccessState build() => const RecentAccessState(isLoaded: true);
+}
+
+class _IdleWave extends WaveSessionController {
+  @override
+  WaveSessionState build() => const WaveSessionState(loaded: true);
 }

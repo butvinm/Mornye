@@ -1,3 +1,5 @@
+import 'package:mornye/widgets/wave_controls.dart';
+import 'package:mornye/providers/wave_session_provider.dart';
 import 'package:mornye/services/playback_diagnostics.dart';
 import 'package:flutter/material.dart';
 import 'package:mornye/theme/app_tokens.dart';
@@ -462,6 +464,17 @@ class _AlbumScreenState extends ConsumerState<AlbumScreen>
         commonQualityTrack,
       ),
       slivers: [
+        SliverToBoxAdapter(
+          child: WaveStartButton(
+            enabled: !_isLoading && tracks.isNotEmpty,
+            wave: WaveContext(
+              kind: WaveKind.album,
+              title: widget.albumName,
+              artist: widget.artistName ?? tracks.firstOrNull?.artistName ?? '',
+              albumTracks: tracks,
+            ),
+          ),
+        ),
         if (_description != null)
           SliverToBoxAdapter(
             child: AlbumDescription(

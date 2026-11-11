@@ -754,11 +754,27 @@ void main() {
       await gesture.up();
       await settlePlayer(tester);
       expect(controller.selected, [1]);
-      expect(find.text('Second').hitTestable(), findsOneWidget);
+      expect(
+        find
+            .descendant(
+              of: find.byType(PlayerMetadataTitle),
+              matching: find.text('Second'),
+            )
+            .hitTestable(),
+        findsOneWidget,
+      );
       await tester.drag(cover, const Offset(110, 0));
       await settlePlayer(tester);
       expect(controller.selected, [1, 0]);
-      expect(find.text('First').hitTestable(), findsOneWidget);
+      expect(
+        find
+            .descendant(
+              of: find.byType(PlayerMetadataTitle),
+              matching: find.text('First'),
+            )
+            .hitTestable(),
+        findsOneWidget,
+      );
       expect(tester.takeException(), isNull);
     });
   }
@@ -775,7 +791,16 @@ void main() {
         );
         mediaItems.add(item('first'));
         await settlePlayer(tester);
-        final title = tester.getTopLeft(find.text('First').hitTestable()).dy;
+        final title = tester
+            .getTopLeft(
+              find
+                  .descendant(
+                    of: find.byType(PlayerMetadataTitle),
+                    matching: find.text('First'),
+                  )
+                  .hitTestable(),
+            )
+            .dy;
         final transport = tester
             .getCenter(
               find.byWidgetPredicate(
@@ -965,7 +990,12 @@ void main() {
     final background = tester.widget<MornyePlayerBackground>(
       find.byType(MornyePlayerBackground),
     );
-    final title = find.text('First').hitTestable();
+    final title = find
+        .descendant(
+          of: find.byType(PlayerMetadataTitle),
+          matching: find.text('First'),
+        )
+        .hitTestable();
     final bounds = tester.getRect(title);
     final contrast = tester.widget<MornyeArtworkContrast>(
       find.byType(MornyeArtworkContrast),
@@ -1406,7 +1436,14 @@ void main() {
         );
         final state = tester.state<ScrollableState>(scrollable);
         final initialOffset = state.position.pixels;
-        final headerTop = tester.getTopLeft(find.text('Second')).dy;
+        final headerTop = tester
+            .getTopLeft(
+              find.descendant(
+                of: find.byType(PlayerMetadataTitle),
+                matching: find.text('Second'),
+              ),
+            )
+            .dy;
         final transport = find.byWidgetPredicate(
           (widget) =>
               widget is MornyePlaybackButton &&
@@ -1460,7 +1497,17 @@ void main() {
           expect(tester.state<ScrollableState>(scrollable), same(state));
           expect(state.position.pixels, closeTo(restoredOffset, 0.01));
         }
-        expect(tester.getTopLeft(find.text('Second')).dy, headerTop);
+        expect(
+          tester
+              .getTopLeft(
+                find.descendant(
+                  of: find.byType(PlayerMetadataTitle),
+                  matching: find.text('Second'),
+                ),
+              )
+              .dy,
+          headerTop,
+        );
         expect(transport.hitTestable(), findsNWidgets(3));
         await touch.up();
         await settlePlayer(tester);
@@ -1897,7 +1944,14 @@ void main() {
       );
       mediaItems.add(item('first'));
       await settlePlayer(tester);
-      await tester.tap(find.text('First').hitTestable());
+      await tester.tap(
+        find
+            .descendant(
+              of: find.byType(PlayerMetadataTitle),
+              matching: find.text('First'),
+            )
+            .hitTestable(),
+      );
       await settlePlayer(tester);
       expect(find.text('Go to Artist'), findsOneWidget);
       expect(find.text('Go to Album'), findsOneWidget);
@@ -2034,7 +2088,7 @@ void main() {
   );
 
   testWidgets(
-    'Mornye star shares Library favorites across tracks and compact headers',
+    'Mornye heart shares Library favorites across tracks and compact headers',
     (tester) async {
       await pumpNowPlaying(
         tester,
@@ -2046,12 +2100,12 @@ void main() {
       final container = ProviderScope.containerOf(
         tester.element(find.byType(NowPlayingScreen)),
       );
-      final star = findAppIcon(CupertinoIcons.star).hitTestable();
+      final star = findAppIcon(CupertinoIcons.heart).hitTestable();
       expect(star, findsOneWidget);
       await tester.tap(star);
       await settlePlayer(tester);
       expect(
-        findAppIcon(CupertinoIcons.star_fill).hitTestable(),
+        findAppIcon(CupertinoIcons.heart_fill).hitTestable(),
         findsOneWidget,
       );
       expect(
@@ -2075,16 +2129,16 @@ void main() {
       await tester.tap(findAppIcon(CupertinoIcons.list_bullet));
       await settlePlayer(tester);
       expect(
-        findAppIcon(CupertinoIcons.star_fill).hitTestable(),
+        findAppIcon(CupertinoIcons.heart_fill).hitTestable(),
         findsOneWidget,
       );
       mediaItems.add(item('second'));
       await settlePlayer(tester);
-      expect(findAppIcon(CupertinoIcons.star).hitTestable(), findsOneWidget);
+      expect(findAppIcon(CupertinoIcons.heart).hitTestable(), findsOneWidget);
       mediaItems.add(item('first'));
       await settlePlayer(tester);
       expect(
-        findAppIcon(CupertinoIcons.star_fill).hitTestable(),
+        findAppIcon(CupertinoIcons.heart_fill).hitTestable(),
         findsOneWidget,
       );
 
@@ -2098,7 +2152,7 @@ void main() {
           .read(libraryCollectionsProvider.notifier)
           .toggleLoved(track);
       await settlePlayer(tester);
-      expect(findAppIcon(CupertinoIcons.star).hitTestable(), findsOneWidget);
+      expect(findAppIcon(CupertinoIcons.heart).hitTestable(), findsOneWidget);
       expect(
         find.byType(MornyePlayerFavoriteButton).hitTestable(),
         findsOneWidget,
@@ -2992,7 +3046,12 @@ void main() {
       expect(artRect.width, closeTo(artRect.height, 0.1));
       expect(artRect.width, greaterThan(140));
       expect(artRect.top, greaterThanOrEqualTo(36));
-      final header = find.text('First').hitTestable();
+      final header = find
+          .descendant(
+            of: find.byType(PlayerMetadataTitle),
+            matching: find.text('First'),
+          )
+          .hitTestable();
       final lyric = find.text('First lyric').hitTestable();
       expect(header, findsOneWidget);
       expect(lyric, findsNothing);

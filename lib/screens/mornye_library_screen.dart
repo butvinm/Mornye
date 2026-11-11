@@ -1,3 +1,4 @@
+import 'package:mornye/widgets/wave_controls.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -484,6 +485,8 @@ class _MornyeLibraryScreenState extends ConsumerState<MornyeLibraryScreen> {
                   ],
                 ),
               ),
+            if (_overview && _query.isEmpty)
+              const SliverToBoxAdapter(child: WaveHistorySection()),
             // The seasonal Rewind, beside the listening history it replays.
             if (_overview &&
                 _query.isEmpty &&

@@ -158,9 +158,14 @@ class LogBuffer extends ChangeNotifier {
     _nativeLogs.setLoggingEnabled(value).catchError((_) {});
   }
 
-  List<LogEntry> get entries =>
-      [..._entries, ..._diagnostics]
-        ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+  List<LogEntry> get entries {
+    final ordered = [..._entries, ..._diagnostics].indexed.toList()
+      ..sort((a, b) {
+        final time = a.$2.timestamp.compareTo(b.$2.timestamp);
+        return time != 0 ? time : a.$1.compareTo(b.$1);
+      });
+    return ordered.map((entry) => entry.$2).toList();
+  }
   int get length => _entries.length + _diagnostics.length;
 
   void add(LogEntry entry) {
